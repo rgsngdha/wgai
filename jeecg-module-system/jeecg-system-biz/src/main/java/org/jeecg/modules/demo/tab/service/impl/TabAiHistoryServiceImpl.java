@@ -741,7 +741,7 @@ public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, Tab
                 {
                     log.info("【进入V5开始识别内容】{}",tabAiModelBund.getSpaceTwo());
                     if(tabAiModelBund.getSpaceOne().equals("0")){ //当前为图片
-                        if(tabAiModelBund.getSpaceTwo().indexOf("车牌")>-1){
+                        if(tabAiModelBund.getSpaceTwo().indexOf("车牌")>-1||tabAiModelBund.getSpaceTwo().indexOf("区域")>-1){
                             log.info("【进入车牌识别内容】{}",tabAiModelBund.getSpaceTwo());
                             int a=this.saveCarIdentifyV5(tabAiModelBund,path);
                             if(a==0){

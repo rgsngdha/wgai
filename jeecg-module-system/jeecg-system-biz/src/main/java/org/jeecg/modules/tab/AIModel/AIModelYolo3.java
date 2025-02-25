@@ -15,6 +15,7 @@ import net.sourceforge.tess4j.TesseractException;
 import org.apache.commons.lang3.StringUtils;
 import org.bytedeco.javacv.*;
 import org.bytedeco.javacv.Frame;
+import org.bytedeco.opencv.opencv_core.Point2f;
 import org.jeecg.common.util.RedisUtil;
 import org.jeecg.modules.demo.tab.entity.PushInfo;
 
@@ -452,13 +453,100 @@ public class AIModelYolo3 {
             return "未知颜色";
         }
     }
+
+    // 锐化图像
+    private static void sharpenImage(Mat input, Mat output) {
+        Mat kernel = new Mat(3, 3, CvType.CV_32F);
+        kernel.put(0, 0, 0, -1, 0);
+        kernel.put(1, 0, -1, 5, -1);
+        kernel.put(2, 0, 0, -1, 0);
+        Imgproc.filter2D(input, output, -1, kernel);
+    }
     public static void main(String[] args) throws Exception {
         System.load("F:\\JAVAAI\\opencv481\\opencv\\build\\java\\x64\\opencv_java481.dll");
-        Mat image = Imgcodecs.imread("F:\\JAVAAI\\tessdata\\green\\c.png");
+        // 读取图像
+        Mat src = Imgcodecs.imread("F:\\home\\1740119768303.png");
+//
+//        String starstr=imageStr("1740110094401.jpg","F:\\home");
+//        System.out.println("starstr"+starstr);
+        // 转换为灰度图像
+        // 1. 图像预处理：灰度化、二值化
+        // 1. 图像预处理：灰度化、二值化
+        Mat gray = new Mat();
+        Imgproc.cvtColor(src, gray, Imgproc.COLOR_BGR2GRAY);
+
+        Mat binary = new Mat();
+        Imgproc.threshold(gray, binary, 0, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
+
+        // 2. 放大图像减少极坐标转换中的锯齿
+        Mat enlargedImage = new Mat();
+        Imgproc.resize(binary, enlargedImage, new Size(binary.cols() * 2, binary.rows() * 2), 0, 0, Imgproc.INTER_CUBIC);
+
+        // 3. 添加字符间的空白（膨胀操作）
+        Mat dilatedImage = new Mat();
+        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(1, 1));  // 使用一个2x2的矩阵作为膨胀核
+        Imgproc.dilate(enlargedImage, dilatedImage, kernel);
+
+        // 4. 检测轮廓
+        List<MatOfPoint> contours = new ArrayList<>();
+        Mat hierarchy = new Mat();
+        Imgproc.findContours(dilatedImage, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+
+        // 5. 使用 RotatedRect 检测弧形文字区域
+        for (MatOfPoint contour : contours) {
+            RotatedRect rotatedRect = Imgproc.minAreaRect(new MatOfPoint2f(contour.toArray()));
+
+            // 获取旋转矩形的角点坐标
+            Point[] vertices = new Point[4];
+            rotatedRect.points(vertices);
+
+            // 在原图上绘制矩形
+            for (int j = 0; j < 4; j++) {
+                Imgproc.line(src, vertices[j], vertices[(j + 1) % 4], new Scalar(0, 255, 0), 2);
+            }
+
+            // 6. 极坐标变换矫正弧形文字（使用更高阶的插值方法）
+            Mat polarImg = new Mat();
+            Point center = rotatedRect.center;  // 弧形文字的中心
+            double maxRadius = rotatedRect.size.height / 2.0; // 以高度为半径
+            Imgproc.linearPolar(dilatedImage, polarImg, center, maxRadius, Imgproc.INTER_CUBIC + Imgproc.WARP_FILL_OUTLIERS);
+
+            // 7. 锐化极坐标变换后的图像
+            Mat sharpenKernel = new Mat(3, 3, CvType.CV_32F);
+            float[] kernelData = {
+                    0, -1, 0,
+                    -1, 5, -1,
+                    0, -1, 0
+            };
+            sharpenKernel.put(0, 0, kernelData);
+
+            Mat sharpenedImage = new Mat();
+            Imgproc.filter2D(polarImg, sharpenedImage, -1, sharpenKernel);
+
+//            // 8. 细化字体边缘（腐蚀操作）
+//            Mat erodedImage = new Mat();
+//            Mat erosionKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(1, 1));  // 细化字体边缘
+//            Imgproc.erode(sharpenedImage, erodedImage, erosionKernel);
+
+            // 保存锐化和放大后的图像
+            String outputPolarImagePath = "F:\\home\\path_to_output_polar_image.jpg";
+            Imgcodecs.imwrite(outputPolarImagePath, sharpenedImage);
+
+            System.out.println("极坐标变换后的清晰图像已保存: " + outputPolarImagePath);
+
+            // 后续可以将 polarImg 图像传递给 OCR 工具进行识别
+            // 使用如 RapidOCR 等工具来识别展开的直线文字
+        }
+
+        // 保存标注了旋转矩形的原图像
+        String outputImagePath = "F:\\home\\orrected_image.jpg";
+        Imgcodecs.imwrite(outputImagePath, src);
+        // 保存结果
+//
+        String endstr=imageStr("path_to_output_polar_image.jpg","F:\\home");
+        System.out.println("endstr"+endstr);
 
 
-        // 输出颜色名称
-        System.out.println("车牌颜色名称: " +carColorStr(image));
 
 //        SendPicOpencvCarStr("F:\\JAVAAI\\tessdata\\1722241390893.png");
 
@@ -718,7 +806,7 @@ public class AIModelYolo3 {
         }
 
 
-        float confThreshold = 0.1f;
+        float confThreshold = 0.45f;
         float nmsThreshold = 0.4f;
 
         List<Rect2d> boxes2d = new ArrayList<>();
@@ -1637,11 +1725,11 @@ public class AIModelYolo3 {
      *
      * @return
      */
-    public void SendPicThread(RedisTemplate redisTemplate){
+    public void SendPicThread(RedisTemplate redisTemplate,String uploadPath){
         List<PushInfo> pushA= (List<PushInfo> ) redisTemplate.opsForValue().get("sendPush");
         ExecutorService executor = Executors.newCachedThreadPool();
         for (PushInfo pushInfo:pushA) {
-            executor.submit(new VideoReadPic(pushInfo));
+            executor.submit(new VideoReadPic(pushInfo,uploadPath));
         }
 
 

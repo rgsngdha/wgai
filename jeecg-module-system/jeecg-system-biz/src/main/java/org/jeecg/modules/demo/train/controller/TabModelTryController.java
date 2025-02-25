@@ -153,7 +153,11 @@ public class TabModelTryController extends JeecgController<TabModelTry, ITabMode
 		 if(tabModelTryOrg.size()<=0) {
 			 return Result.error("未找到对应数据");
 		 }
-		 List<TabEasyPic> pic=tabEasyPicService.listByIds(tabModelTryOrg.stream().map(TabModelTryOrg::getPicId).collect(Collectors.toList()));
+		 //List<TabEasyPic> pic=tabEasyPicService.listByIds(tabModelTryOrg.stream().map(TabModelTryOrg::getPicId).collect(Collectors.toList()));
+		 QueryWrapper<TabEasyPic> queryWrapper=new QueryWrapper<>();
+		 queryWrapper.eq("model_id",id);
+		 queryWrapper.orderByAsc("mark_Type");
+		 List<TabEasyPic> pic=tabEasyPicService.list(queryWrapper);
 		 return  Result.ok(pic);
 	 }
 	/**

@@ -110,7 +110,7 @@ public class TabModelTryServiceImpl extends ServiceImpl<TabModelTryMapper, TabMo
         double totalSizeInMB = totalSize / (1024.0 * 1024.0);
         log.info("当前文件大小 " + totalSizeInMB + " MB");
         map.put("list",list);
-        map.put("size",totalSizeInMB);
+        map.put("size",String.format("%.2f",totalSizeInMB));
         return map;
     }
 
@@ -264,7 +264,7 @@ public class TabModelTryServiceImpl extends ServiceImpl<TabModelTryMapper, TabMo
             //解压压缩包放置
             Map<String,Object> map=unzipFiles(upLoadPath + "/" + fileName, upLoadPath);
             List<String> list = (List<String>) map.get("list");
-            Double  PicSize = (Double) map.get("totalSizeInMB");
+            Double  PicSize = Double.parseDouble(map.get("size").toString());
             String id = UUID.randomUUID().toString().replace("-", "");
             if (StringUtils.isNotEmpty(tabModelTry.getId())) {
                 id = tabModelTry.getId();
