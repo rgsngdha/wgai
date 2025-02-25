@@ -1,7 +1,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.jeecgframework.boot</groupId>
-  <artifactId>jeecg-boot-parent</artifactId>
+  <artifactId>wgai-boot-parent</artifactId>
   <version>3.4.3</version>
   <packaging>pom</packaging>
   <name>JEECG BOOT ${project.version}</name>
@@ -62,9 +62,9 @@
 	</properties>
 
 	<modules>
-        <module>jeecg-boot-base-core</module>
-        <module>jeecg-module-demo</module>
-        <module>jeecg-module-system</module>
+        <module>wgai-boot-base-core</module>
+        <module>wgai-module-demo</module>
+        <module>wgai-module-system</module>
 	</modules>
 
 	<repositories>
@@ -178,7 +178,7 @@
 			<!-- system 模块-->
 			<dependency>
 				<groupId>org.jeecgframework.boot</groupId>
-				<artifactId>jeecg-system-biz</artifactId>
+				<artifactId>wgai-system-biz</artifactId>
 				<version>${jeecgboot.version}</version>
 			</dependency>
 
@@ -197,7 +197,7 @@
 			<!-- system 单体 api -->
 			<dependency>
 				<groupId>org.jeecgframework.boot</groupId>
-				<artifactId>jeecg-system-local-api</artifactId>
+				<artifactId>wgai-system-local-api</artifactId>
 				<version>${jeecgboot.version}</version>
 			</dependency>
 			<!-- system 微服务 api -->
@@ -464,7 +464,7 @@
 			<id>SpringCloud</id>
 			<modules>
 				<!-- 微服务模块-->
-				<module>jeecg-server-cloud</module>
+				<module>wgai-server-cloud</module>
 			</modules>
 		</profile>
     </profiles>
