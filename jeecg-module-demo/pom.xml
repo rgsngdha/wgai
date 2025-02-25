@@ -14,7 +14,8 @@
     <dependencies>
         <dependency>
             <groupId>org.jeecgframework.boot</groupId>
-            <artifactId>jeecg-boot-base-core</artifactId>
+            <artifactId>wgai-boot-base-core</artifactId>
+            <version>3.4.3</version>
         </dependency>
     </dependencies>
 

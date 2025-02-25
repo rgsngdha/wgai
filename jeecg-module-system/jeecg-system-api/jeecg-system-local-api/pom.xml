@@ -7,6 +7,13 @@
         <groupId>org.jeecgframework.boot</groupId>
         <version>3.4.3</version>
     </parent>
+    <dependencies>
+
+        <dependency>
+            <groupId>org.jeecgframework.boot</groupId>
+            <artifactId>jeecg-boot-base-core</artifactId>
+        </dependency>
+    </dependencies>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>jeecg-system-local-api</artifactId>

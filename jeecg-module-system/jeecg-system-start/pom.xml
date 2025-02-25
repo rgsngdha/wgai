@@ -35,6 +35,16 @@
             <artifactId>jeecg-module-demo</artifactId>
             <version>${jeecgboot.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jeecgframework.boot</groupId>
+            <artifactId>codegenerate</artifactId>
+            <version>1.4.3</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 
     <build>
