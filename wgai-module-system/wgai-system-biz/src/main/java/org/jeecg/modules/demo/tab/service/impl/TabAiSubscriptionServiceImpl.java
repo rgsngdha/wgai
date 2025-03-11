@@ -1,5 +1,8 @@
 package org.jeecg.modules.demo.tab.service.impl;
 
+import org.apache.commons.lang3.StringUtils;
+import org.jeecg.modules.demo.audio.entity.TabAudioDevice;
+import org.jeecg.modules.demo.audio.mapper.TabAudioDeviceMapper;
 import org.jeecg.modules.demo.tab.entity.PushInfo;
 import org.jeecg.modules.demo.tab.entity.TabAiSubscription;
 import org.jeecg.modules.demo.tab.mapper.TabAiSubscriptionMapper;
@@ -32,24 +35,36 @@ public class TabAiSubscriptionServiceImpl extends ServiceImpl<TabAiSubscriptionM
 
     @Autowired
     TabAiModelServiceImpl tabAiModelServiceImpl;
+
+    @Autowired
+    TabAudioDeviceMapper tabAudioDeviceMapper;
     @Override
-    public void insertRedisSubscription() {
-        List<TabAiSubscription> listSubscription=this.list();
+    public void insertRedisSubscription(TabAiSubscription aiSubscript) {
+ //       List<TabAiSubscription> listSubscription=this.list();
         List<PushInfo> PushList=new ArrayList<>();
-        for (TabAiSubscription aiSubscript:listSubscription) {
-            if(aiSubscript.getPushStatic()==0){
+   //     for (TabAiSubscription aiSubscript:listSubscription) {
+        //    if(aiSubscript.getPushStatic()==0){
                 List<String> stringList= Arrays.asList(aiSubscript.getEventTypes().split(","));
                 List<TabAiModel>  tabAiModels=tabAiModelServiceImpl.listByIds(stringList);
                 PushInfo pushInfo=new PushInfo();
+                pushInfo.setName(aiSubscript.getName());
                 pushInfo.setPushId(aiSubscript.getId());
                 pushInfo.setPushUrl(aiSubscript.getEventUrl());
                 pushInfo.setVideoURL(aiSubscript.getRemake());
                 pushInfo.setTabAiModelList(tabAiModels);
                 pushInfo.setTime(Integer.parseInt(aiSubscript.getEventNumber()));
                 pushInfo.setIndexCode(aiSubscript.getIndexCode());
+                pushInfo.setPushStatic(aiSubscript.getPushStatic());
+                if(aiSubscript.getAudioStatic()!=null&&aiSubscript.getAudioStatic()==0){
+                    pushInfo.setAudioStatic(aiSubscript.getAudioStatic());
+                    pushInfo.setAudioId(tabAudioDeviceMapper.selectById(aiSubscript.getAudioId()));
+                }else{
+                    pushInfo.setAudioStatic(1);
+                }
+
                 PushList.add(pushInfo);
-            }
-        }
+        //    }
+    //    }
         redisTemplate.opsForValue().set("sendPush",PushList,365, TimeUnit.DAYS);
     }
 }

@@ -233,7 +233,57 @@ public class RestUtil {
         HttpEntity<String> request = new HttpEntity<>(body, headers);
         return RT.exchange(url, method, request, responseType);
     }
+    public static <T> ResponseEntity<T> requestUniCode(String url, HttpMethod method, HttpHeaders headers, JSONObject variables, Object params, Class<T> responseType) {
+        log.info(" RestUtil  --- request ---  url = "+ url);
+        if (StringUtils.isEmpty(url)) {
+            throw new RuntimeException("url 不能为空");
+        }
+        if (method == null) {
+            throw new RuntimeException("method 不能为空");
+        }
+        if (headers == null) {
+            headers = new HttpHeaders();
+        }
+        // 请求体
+        String body = "";
+        if (params != null) {
+            if (params instanceof JSONObject) {
+                body = ((JSONObject) params).toJSONString();
 
+            } else {
+                body = params.toString();
+            }
+        }
+        // 拼接 url 参数
+        if (variables != null && !variables.isEmpty()) {
+            url += ("?" + asUrlVariables(variables));
+        }
+        // 发送请求
+        HttpEntity<String> request = new HttpEntity<>(body.replace("\\\\","\\"), headers);
+        return RT.exchange(url, method, request, responseType);
+    }
+
+    public static <T> ResponseEntity<T> requestByte(String url, HttpMethod method, HttpHeaders headers, JSONObject variables, byte[] body, Class<T> responseType) {
+        log.info(" RestUtil  --- request ---  url = "+ url);
+        if (StringUtils.isEmpty(url)) {
+            throw new RuntimeException("url 不能为空");
+        }
+        if (method == null) {
+            throw new RuntimeException("method 不能为空");
+        }
+        if (headers == null) {
+            headers = new HttpHeaders();
+        }
+
+
+        // 拼接 url 参数
+        if (variables != null && !variables.isEmpty()) {
+            url += ("?" + asUrlVariables(variables));
+        }
+        // 发送请求
+        HttpEntity<byte[]> request = new HttpEntity<>(body, headers);
+        return RT.exchange(url, method, request, responseType);
+    }
     /**
      * 获取JSON请求头
      */

@@ -30,11 +30,11 @@ public class VideoSendReadCfgV5Util {
      * @return
      */
     public static Map<String, TabAiBase> getMap(List<TabAiBase> tabAiBaseList){
-        Map<String, TabAiBase> mapname=new HashMap<>();
+
         for (TabAiBase aibase:tabAiBaseList) {
-            mapname.put(aibase.getEnglishName(),aibase);
+            map.put(aibase.getEnglishName(),aibase);
         }
-        return  mapname;
+        return  map;
     }
     public static String millisecondsToHours(long milliseconds) {
         // 将毫秒转换为小时、分钟和秒

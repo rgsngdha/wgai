@@ -284,12 +284,7 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
             tabTrainResultQueryWrapper.eq("model_id",id);
             tabTrainResultService.remove(tabTrainResultQueryWrapper);
 
-            TabTrainLog tabTrainLog=new TabTrainLog();
-            tabTrainLog.setModelId(id);
-            tabTrainLog.setTrainLog(stringBuffer.toString());
-            tabTrainLog.setCmdText(text);
-            tabTrainLog.setCmdPath(path);
-            tabTrainLogService.save(tabTrainLog);
+
 
             /***
              * 保存内容
@@ -378,8 +373,24 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
             }
             tabModelTryService.updateById(modelTry);
 
+
         }catch (Exception ex){
             ex.printStackTrace();
+        }finally {
+            log.info("训练结束日志失败也要保存一下看看原因{}",text.length());
+            TabTrainLog tabTrainLog=new TabTrainLog();
+            tabTrainLog.setModelId(id);
+            tabTrainLog.setTrainLog(stringBuffer.toString());
+
+            if(text.length()<=1073741824){//小于2G保存一下
+                tabTrainLog.setCmdText(text);
+            }else{
+                tabTrainLog.setCmdText("日志文件过于庞大舍弃了");
+            }
+
+            tabTrainLog.setCmdPath(path);
+            tabTrainLogService.save(tabTrainLog);
+
         }
 
     }

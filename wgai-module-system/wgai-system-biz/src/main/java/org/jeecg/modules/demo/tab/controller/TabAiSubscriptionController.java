@@ -177,7 +177,7 @@ public class TabAiSubscriptionController extends JeecgController<TabAiSubscripti
 		tabAiSubscription.setRunState(0);
 		boolean flag=tabAiSubscriptionService.save(tabAiSubscription);
 		if(flag) {
-			tabAiSubscriptionService.insertRedisSubscription();
+			tabAiSubscriptionService.insertRedisSubscription(tabAiSubscription1);
 		}
 		return Result.OK("添加成功！");
 	}
@@ -195,17 +195,18 @@ public class TabAiSubscriptionController extends JeecgController<TabAiSubscripti
 	public Result<String> edit(@RequestBody TabAiSubscription tabAiSubscription) {
 
 		tabAiSubscriptionService.updateById(tabAiSubscription);
-		tabAiSubscriptionService.insertRedisSubscription();
+
 		if(tabAiSubscription.getRunState()==1){
+			redisTemplate.delete("sendPush");
+			tabAiSubscriptionService.insertRedisSubscription(tabAiSubscription);
 			log.info("输出结果");
-			List<PushInfo> object1= (List<PushInfo> ) redisTemplate.opsForValue().get("sendPush");
 			//中文写入缓存内容
 			tabAiBaseService.SendRedisBase();
-			redisTemplate.opsForValue().set("isRunPush",true);
+			redisTemplate.opsForValue().set(tabAiSubscription.getId()+"isRunPush",true);
 			AIModelYolo3  modelYolo3=new AIModelYolo3();
 			modelYolo3.SendPicThread(redisTemplate,uplpadPath);
 		}else{
-			redisTemplate.opsForValue().set("isRunPush",false);
+			redisTemplate.opsForValue().set(tabAiSubscription.getId()+"isRunPush",false);
 		}
 		return Result.OK("执行成功!");
 	}
@@ -228,7 +229,7 @@ public class TabAiSubscriptionController extends JeecgController<TabAiSubscripti
 		 TabAiSubscription tabAiSubscription1=tabAiSubscriptionService.getOne(queryWrapper);
 		 boolean flag=tabAiSubscriptionService.updateById(tabAiSubscription1);
 		 if(flag) {
-			 tabAiSubscriptionService.insertRedisSubscription();
+			 tabAiSubscriptionService.insertRedisSubscription(tabAiSubscription1);
 		 }
 		 return Result.OK("编辑成功!");
 	 }
@@ -252,7 +253,7 @@ public class TabAiSubscriptionController extends JeecgController<TabAiSubscripti
 		 TabAiSubscription tabAiSubscription1=tabAiSubscriptionService.getOne(queryWrapper);
 		 boolean flag=tabAiSubscriptionService.removeById(tabAiSubscription1);
 		 if(flag) {
-			 tabAiSubscriptionService.insertRedisSubscription();
+			 tabAiSubscriptionService.insertRedisSubscription(tabAiSubscription1);
 		 }
 		 return Result.OK("删除成功!");
 	 }
@@ -269,7 +270,7 @@ public class TabAiSubscriptionController extends JeecgController<TabAiSubscripti
 	@DeleteMapping(value = "/delete")
 	public Result<String> delete(@RequestParam(name="id",required=true) String id) {
 		tabAiSubscriptionService.removeById(id);
-		tabAiSubscriptionService.insertRedisSubscription();
+	//	tabAiSubscriptionService.insertRedisSubscription();
 		return Result.OK("删除成功!");
 	}
 
@@ -287,7 +288,7 @@ public class TabAiSubscriptionController extends JeecgController<TabAiSubscripti
 	@DeleteMapping(value = "/deleteBatch")
 	public Result<String> deleteBatch(@RequestParam(name="ids",required=true) String ids) {
 		this.tabAiSubscriptionService.removeByIds(Arrays.asList(ids.split(",")));
-		tabAiSubscriptionService.insertRedisSubscription();
+		// tabAiSubscriptionService.insertRedisSubscription();
 		return Result.OK("批量删除成功!");
 	}
 	

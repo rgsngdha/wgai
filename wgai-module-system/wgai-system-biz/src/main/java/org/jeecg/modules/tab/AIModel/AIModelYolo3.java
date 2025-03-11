@@ -1,9 +1,5 @@
 package org.jeecg.modules.tab.AIModel;
 
-import ai.onnxruntime.OnnxTensor;
-import ai.onnxruntime.OnnxValue;
-import ai.onnxruntime.OrtEnvironment;
-import ai.onnxruntime.OrtSession;
 import com.alibaba.fastjson.JSONObject;
 import com.benjaminwan.ocrlibrary.OcrResult;
 import io.github.mymonstercat.Model;
@@ -15,15 +11,15 @@ import net.sourceforge.tess4j.TesseractException;
 import org.apache.commons.lang3.StringUtils;
 import org.bytedeco.javacv.*;
 import org.bytedeco.javacv.Frame;
-import org.bytedeco.opencv.opencv_core.Point2f;
 import org.jeecg.common.util.RedisUtil;
+import org.jeecg.modules.demo.audio.entity.TabAudioDevice;
 import org.jeecg.modules.demo.tab.entity.PushInfo;
 
+import org.jeecg.modules.demo.tab.entity.TabAiModelBund;
 import org.jeecg.modules.demo.video.entity.TabVideoUtil;
 import org.jeecg.modules.message.websocket.WebSocket;
 
 
-import org.jeecg.modules.tab.AIModel.V5.MapTime;
 import org.jeecg.modules.tab.AIModel.V5.VideoReadInfoV5;
 import org.jeecg.modules.tab.AIModel.V5.VideoReadV5;
 import org.jeecg.modules.tab.AIModel.V5.VideoReadtestV5;
@@ -52,8 +48,6 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URL;
 import java.net.URLConnection;
-import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
@@ -829,6 +823,7 @@ public class AIModelYolo3 {
                 Mat scores = detection.colRange(5, cols);
                 Core.MinMaxLocResult minMaxResult = Core.minMaxLoc(scores);
                 float confidence = (float)detection.get(0, 4)[0];
+             //   log.info("当前的信任阈值{}",Math.round(confidence));
                 Point classIdPoint = minMaxResult.maxLoc;
 
                 if (confidence > confThreshold) {
@@ -1643,7 +1638,7 @@ public class AIModelYolo3 {
      * @param
      * @return
      */
-    public  String SendVideoLocalhostYoloV5Thread(String userId, String weight, String cfg, String names, String videoUrl, String uploadpath, WebSocket webSocket, RedisUtil redisUtil, RedisTemplate redisTemplate) throws Exception {
+    public  String SendVideoLocalhostYoloV5Thread(TabAudioDevice tabAudioDevice,TabAiModelBund tabAiModelBund, String userId, String weight, String cfg, String names, String videoUrl, String uploadpath, WebSocket webSocket, RedisUtil redisUtil, RedisTemplate redisTemplate) throws Exception {
         Long a=System.currentTimeMillis();
 
 
@@ -1658,6 +1653,8 @@ public class AIModelYolo3 {
         ExecutorService executor = Executors.newCachedThreadPool();
         VideoSendReadCfg.StartTime=0;
         log.info("videoUrl：" + videoUrl);
+
+
         // 提交多个任务到线程池
         for (int i = 0; i < 3; i++) {
             //效果延迟了三秒
@@ -1665,7 +1662,7 @@ public class AIModelYolo3 {
             if(i==0){
                 executor.submit(new VideoReadV5(videoUrl,redisTemplate,userId));
             }else if(i==1){
-                executor.submit(new VideoReadInfoV5(videoUrl,redisTemplate,userId,uploadpath+ File.separator +names,uploadpath+ File.separator +cfg,uploadpath+ File.separator +weight,webSocket));
+                executor.submit(new VideoReadInfoV5(tabAudioDevice,tabAiModelBund,videoUrl,redisTemplate,userId,uploadpath+ File.separator +names,uploadpath+ File.separator +cfg,uploadpath+ File.separator +weight,webSocket));
             }else{
                 executor.submit(new VideoReadtestV5(videoUrl,redisTemplate,userId));
             }
@@ -1733,11 +1730,16 @@ public class AIModelYolo3 {
         List<PushInfo> pushA= (List<PushInfo> ) redisTemplate.opsForValue().get("sendPush");
         ExecutorService executor = Executors.newCachedThreadPool();
         for (PushInfo pushInfo:pushA) {
+            log.info("当前属性内容{}",pushInfo.getName());
+
             executor.submit(new VideoReadPic(pushInfo,uploadPath, redisTemplate));
         }
 
 
     }
+
+
+
 
     /**
      * 图片转base64

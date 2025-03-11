@@ -3,6 +3,7 @@ package org.jeecg.modules.tab.AIModel.V5;
 import com.alibaba.fastjson.JSONObject;
 import org.jeecg.modules.demo.tab.entity.TabAiBase;
 import org.jeecg.modules.tab.AIModel.AIModelYolo3;
+import org.jeecg.modules.tab.AIModel.VideoSendReadCfg;
 import org.opencv.core.*;
 import org.opencv.dnn.Dnn;
 import org.opencv.dnn.Net;
@@ -124,7 +125,7 @@ public class test {
                 //        log.info("Detected object at: (" + box.x + ", " + box.y + "),width: (" + box.width + ", " + box.height + ")");
                 //   Imgproc.putText(frame, classNames.get(ab), new Point(box.x, box.y - 5), Core.FONT_HERSHEY_SIMPLEX, 0.5, CommonColors(c), 1);
                 String name=classNames.get(ab);
-                TabAiBase aiBase =VideoSendReadCfgV5.map.get(name);
+                TabAiBase aiBase = VideoSendReadCfg.map.get(name);
                 bja.put("cmd", "video");
                 JSONObject bj=new JSONObject();
                 bj.put("x", xzb);

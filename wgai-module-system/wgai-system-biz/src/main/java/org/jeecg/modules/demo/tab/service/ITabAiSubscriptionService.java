@@ -14,6 +14,6 @@ public interface ITabAiSubscriptionService extends IService<TabAiSubscription> {
     /***
      * 推送订阅地址事件
      */
-    public void insertRedisSubscription();
+    public void insertRedisSubscription(TabAiSubscription aiSubscript);
 
 }

@@ -2,11 +2,15 @@ package org.jeecg.modules.tab.AIModel.V5;
 
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.jeecg.modules.demo.audio.entity.TabAudioDevice;
 import org.jeecg.modules.demo.tab.entity.TabAiBase;
+import org.jeecg.modules.demo.tab.entity.TabAiModelBund;
 import org.jeecg.modules.message.websocket.WebSocket;
 import org.jeecg.modules.tab.AIModel.AIModelYolo3;
 import org.jeecg.modules.tab.AIModel.VideoFrameReader;
 import org.jeecg.modules.tab.AIModel.V5.VideoSendReadCfgV5;
+import org.jeecg.modules.tab.AIModel.VideoSendReadCfg;
 import org.opencv.core.*;
 import org.opencv.dnn.Dnn;
 import org.opencv.dnn.Net;
@@ -21,6 +25,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import static org.jeecg.modules.demo.audio.util.audioSend.getToken;
+import static org.jeecg.modules.demo.audio.util.audioSend.postAudioText;
 import static org.jeecg.modules.tab.AIModel.AIModelYolo3.CommonColorsVue;
 
 /**
@@ -39,7 +45,10 @@ public class VideoReadInfoV5 implements Runnable{
     public String cfgUrl;
     public String weightUrl;
     public WebSocket webSocket;
-    public VideoReadInfoV5(String videoUrl, RedisTemplate redisTemplate, String userId, String namesUrl, String cfgUrl, String weightUrl, WebSocket webSocket){
+    public TabAiModelBund tabAiModelBund;
+
+    public TabAudioDevice tabAudioDevice;
+    public VideoReadInfoV5(TabAudioDevice tabAudioDevice, TabAiModelBund tabAiModelBund, String videoUrl, RedisTemplate redisTemplate, String userId, String namesUrl, String cfgUrl, String weightUrl, WebSocket webSocket){
         this.videoUrl=videoUrl;
         this.redisTemplate=redisTemplate;
         this.userId=userId;
@@ -47,6 +56,8 @@ public class VideoReadInfoV5 implements Runnable{
         this.cfgUrl=cfgUrl;
         this.weightUrl=weightUrl;
         this.webSocket=webSocket;
+        this.tabAiModelBund=tabAiModelBund;
+        this.tabAudioDevice=tabAudioDevice;
     }
     @Override
     public void run() {
@@ -142,6 +153,7 @@ public class VideoReadInfoV5 implements Runnable{
                 int c=0;
                 JSONObject bja=new JSONObject();
                 List<JSONObject>  jsonlist=new ArrayList<>();
+                String audiotext="";
                 for (int idx : indicesArray) {
                     Rect2d box = boxes2d.get(idx);
                     Integer ab=classIds.get(idx);
@@ -161,7 +173,14 @@ public class VideoReadInfoV5 implements Runnable{
             //        log.info("Detected object at: (" + box.x + ", " + box.y + "),width: (" + box.width + ", " + box.height + ")");
                     //   Imgproc.putText(frame, classNames.get(ab), new Point(box.x, box.y - 5), Core.FONT_HERSHEY_SIMPLEX, 0.5, CommonColors(c), 1);
                     String name=classNames.get(ab);
-                   // TabAiBase aiBase =VideoSendReadCfgV5.map.get(name);
+                    log.info("识别到了{}",name);
+                    TabAiBase aiBase = VideoSendReadCfg.map.get(name);
+                    if(aiBase!=null){
+                        name=aiBase.getChainName();
+                        audiotext+="识别到了"+name+aiBase.getRemark() ;
+                    }else{
+                        log.info("识别到了 他没有啊{}",name);
+                    }
                     bja.put("cmd", "video");
                     JSONObject bj=new JSONObject();
                     bj.put("x", xzb);
@@ -177,7 +196,17 @@ public class VideoReadInfoV5 implements Runnable{
                     bja.put("list",jsonlist);
                     c++;
 
+
+
                 }
+
+
+                if(tabAudioDevice!=null&&StringUtils.isNotEmpty(audiotext)){
+                  String token= getToken(tabAudioDevice);
+                  postAudioText(token,tabAudioDevice,audiotext);
+                }
+
+
                 redisTemplate.opsForValue().set(videoUrl+"timeV5"+userId,mapTime.times,365,TimeUnit.DAYS);
                 // 计算跳过的帧数（根据所需的时间消耗）
                 webSocket.sendMessage(bja.toJSONString());

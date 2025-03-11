@@ -1,4 +1,4 @@
-package org.jeecg.modules.demo.tab.entity;
+package org.jeecg.modules.demo.audio.entity;
 
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
@@ -19,17 +19,17 @@ import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
 /**
- * @Description: Ai事件订阅
- * @Author: WGAI
- * @Date:   2024-04-08
+ * @Description: 播报设备
+ * @Author: jeecg-boot
+ * @Date:   2025-03-07
  * @Version: V1.0
  */
 @Data
-@TableName("tab_ai_subscription")
+@TableName("tab_audio_device")
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false)
-@ApiModel(value="tab_ai_subscription对象", description="Ai事件订阅")
-public class TabAiSubscription implements Serializable {
+@ApiModel(value="tab_audio_device对象", description="播报设备")
+public class TabAudioDevice implements Serializable {
     private static final long serialVersionUID = 1L;
 
 	/**主键*/
@@ -55,45 +55,41 @@ public class TabAiSubscription implements Serializable {
 	/**所属部门*/
     @ApiModelProperty(value = "所属部门")
     private java.lang.String sysOrgCode;
-	/**订阅类型*/
-	@Excel(name = "订阅类型", width = 15)
-    @ApiModelProperty(value = "订阅类型")
-    private java.lang.String eventTypes;
-
-    @ApiModelProperty(value = "名称")
-    private  String name;
-    private transient String eventTypesName;
-	/**订阅回调地址*/
-	@Excel(name = "订阅回调地址", width = 15)
-    @ApiModelProperty(value = "订阅回调地址")
-    private java.lang.String eventUrl;
-	/**同类型报警间隔*/
-	@Excel(name = "同类型报警间隔", width = 15)
-    @ApiModelProperty(value = "同类型报警间隔")
-    private java.lang.String eventNumber;
-	/**报警消息*/
-	@Excel(name = "报警消息", width = 15)
-    @ApiModelProperty(value = "报警消息")
-    private java.lang.String eventInfo;
-	/**备注*/
-	@Excel(name = "备注", width = 15)
-    @ApiModelProperty(value = "备注")
-    private java.lang.String remake;
-
-    @Dict(dicCode = "push_static")
-    @ApiModelProperty(value = "推送状态")
-    Integer pushStatic;
-    @Dict(dicCode = "push_static")
-    @ApiModelProperty(value = "播报状态")
-    Integer audioStatic;
-
-    @ApiModelProperty(value = "播报地址")
-    @Dict(dictTable = "tab_audio_device", dicCode = "id", dicText = "device_name")
-    private java.lang.String audioId;
-
-    String indexCode;
-    @Dict(dicCode = "run_state")
-    @ApiModelProperty(value = "执行状态")
-    Integer runState;
-
+	/**设备名称*/
+	@Excel(name = "设备名称", width = 15)
+    @ApiModelProperty(value = "设备名称")
+    private java.lang.String deviceName;
+	/**设备URL*/
+	@Excel(name = "设备URL", width = 15)
+    @ApiModelProperty(value = "设备URL")
+    private java.lang.String deivceUrl;
+	/**设备唯一值*/
+	@Excel(name = "设备唯一值", width = 15)
+    @ApiModelProperty(value = "设备唯一值")
+    private java.lang.String deviceUid;
+	/**用户名*/
+	@Excel(name = "用户名", width = 15)
+    @ApiModelProperty(value = "用户名")
+    private java.lang.String username;
+	/**密码*/
+	@Excel(name = "密码", width = 15)
+    @ApiModelProperty(value = "密码")
+    private java.lang.String pwd;
+	/**是否启用*/
+	@Excel(name = "是否启用", width = 15)
+    @ApiModelProperty(value = "是否启用")
+    private java.lang.String isState;
+	/**token超时*/
+	@Excel(name = "token超时", width = 15)
+    @ApiModelProperty(value = "token超时")
+    private java.lang.Integer tokenTime;
+	/**厂家*/
+	@Excel(name = "厂家", width = 15, dicCode = "device_fac")
+	@Dict(dicCode = "device_fac")
+    @ApiModelProperty(value = "厂家")
+    private java.lang.String deviceFac;
+	/**文字转语音*/
+	@Excel(name = "文字转语音", width = 15)
+    @ApiModelProperty(value = "文字转语音")
+    private java.lang.String isAudio;
 }

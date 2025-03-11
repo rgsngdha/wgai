@@ -97,4 +97,17 @@ public class TabAiModelBund implements Serializable {
 	@Excel(name = "备用", width = 15)
     @ApiModelProperty(value = "备用")
     private java.lang.String spaceFive;
+
+    @ApiModelProperty(value = "是否推送")
+    private java.lang.String isPush;
+
+    @ApiModelProperty(value = "是否播报")
+    private java.lang.String isAudio;
+
+    @ApiModelProperty(value = "推送地址")
+    @Dict(dictTable = "tab_ai_subscription", dicCode = "id", dicText = "device_name")
+    private java.lang.String pushId;
+    @ApiModelProperty(value = "播报地址")
+    @Dict(dictTable = "tab_audio_device", dicCode = "id", dicText = "device_name")
+    private java.lang.String audioId;
 }

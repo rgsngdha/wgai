@@ -11,13 +11,16 @@ import net.ailemon.asrt.sdk.Sdk;
 import net.ailemon.asrt.sdk.common.Common;
 import net.ailemon.asrt.sdk.models.AsrtApiResponse;
 import net.ailemon.asrt.sdk.models.Wave;
+import org.apache.commons.lang3.StringUtils;
 import org.bytedeco.ffmpeg.global.avcodec;
 import org.bytedeco.javacv.*;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.system.vo.LoginUser;
 import org.jeecg.common.util.RedisUtil;
+import org.jeecg.modules.demo.audio.entity.TabAudioDevice;
 import org.jeecg.modules.demo.audio.entity.TabAuditSetting;
 import org.jeecg.modules.demo.audio.entity.TabKeyWords;
+import org.jeecg.modules.demo.audio.mapper.TabAudioDeviceMapper;
 import org.jeecg.modules.demo.audio.mapper.TabKeyWordsMapper;
 import org.jeecg.modules.demo.audio.service.ITabKeyWordsService;
 import org.jeecg.modules.demo.tab.entity.TabAiBase;
@@ -57,6 +60,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import static org.jeecg.modules.demo.audio.util.audioSend.getToken;
 import static org.jeecg.modules.tab.AIModel.AIModelYolo3.bufferedImageToMat;
 import static org.jeecg.modules.tab.AIModel.AIModelYolo3.converterToFrame;
 
@@ -69,7 +73,8 @@ import static org.jeecg.modules.tab.AIModel.AIModelYolo3.converterToFrame;
 @Service
 @Slf4j
 public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, TabAiHistory> implements ITabAiHistoryService {
-
+    @Autowired
+    TabAudioDeviceMapper tabAudioDeviceMapper;
     @Autowired
     TabAiBaseMapper tabAiBaseMapper;
     @Autowired
@@ -657,8 +662,11 @@ public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, Tab
             VideoSendReadCfg.map=VideoSendReadCfg.getMap(base);
         }
         try {
-
-            String savePath=modelYolo3.SendVideoLocalhostYoloV5Thread(userId,tabAiModel1.getAiWeights(),tabAiModel1.getAiConfig(),tabAiModel1.getAiNameName(),tabAiModelBund.getSendUrl(),path,webSocket,redisUtil,redisTemplate);
+            TabAudioDevice tabAudioDevice=new TabAudioDevice();
+            if(tabAiModelBund.getIsAudio().equals("Y")&& StringUtils.isNotEmpty(tabAiModelBund.getAudioId())){
+                tabAudioDevice=tabAudioDeviceMapper.selectById(tabAiModelBund.getAudioId());
+            }
+            String savePath=modelYolo3.SendVideoLocalhostYoloV5Thread(  tabAudioDevice,tabAiModelBund,userId,tabAiModel1.getAiWeights(),tabAiModel1.getAiConfig(),tabAiModel1.getAiNameName(),tabAiModelBund.getSendUrl(),path,webSocket,redisUtil,redisTemplate);
             if(savePath.equals("error")){
                 return 1;
             }
@@ -696,8 +704,12 @@ public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, Tab
             VideoSendReadCfg.map=VideoSendReadCfg.getMap(base);
         }
         try {
+            TabAudioDevice tabAudioDevice=new TabAudioDevice();
+            if(tabAiModelBund.getIsAudio().equals("Y")&& StringUtils.isNotEmpty(tabAiModelBund.getAudioId())){
+                tabAudioDevice=tabAudioDeviceMapper.selectById(tabAiModelBund.getAudioId());
 
-            String savePath=modelYolo3.SendVideoLocalhostYoloV5Thread(userId,tabAiModel1.getAiWeights(),tabAiModel1.getAiConfig(),tabAiModel1.getAiNameName(),tabAiModelBund.getSendUrl(),path,webSocket,redisUtil,redisTemplate);
+            }
+            String savePath=modelYolo3.SendVideoLocalhostYoloV5Thread(tabAudioDevice,tabAiModelBund,userId,tabAiModel1.getAiWeights(),tabAiModel1.getAiConfig(),tabAiModel1.getAiNameName(),tabAiModelBund.getSendUrl(),path,webSocket,redisUtil,redisTemplate);
             if(savePath.equals("error")){
                 return 1;
             }
