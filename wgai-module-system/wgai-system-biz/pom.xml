@@ -29,12 +29,12 @@
 			<artifactId>hibernate-re</artifactId>
 		</dependency>
 		<!-- easyAi -->
-		<dependency>
-			<groupId>com.wlld</groupId>
-			<artifactId>easyAi</artifactId>
-			<version>1.1.7</version>
-		</dependency>
-		<!-- y语音识别 api -->
+<!--		<dependency>-->
+<!--			<groupId>com.wlld</groupId>-->
+<!--			<artifactId>easyAi</artifactId>-->
+<!--			<version>1.1.7</version>-->
+<!--		</dependency>-->
+		<!-- y语音识别 api  当你在寻找这个jar包的时候我已经知道你没有阅读代码 因为此jar包就在代码中 你还在苦苦寻找-->
 		<dependency>
 			<groupId>sherpa.onnx.java</groupId>
 			<artifactId>k2fsa</artifactId>
