@@ -75,18 +75,18 @@ public class TabAiBase implements Serializable {
 	@Excel(name = "示例图片", width = 15)
     @ApiModelProperty(value = "示例图片")
     private java.lang.String sendUrl;
-	/**备注*/
-	@Excel(name = "备注", width = 15)
+	/**报警内容*/
+	@Excel(name = "报警内容", width = 15)
     @ApiModelProperty(value = "备注")
     private java.lang.String remark;
-	/**备注*/
-	@Excel(name = "备注", width = 15)
+	/**语音播报内容*/
+	@Excel(name = "语音播报内容", width = 15)
     @ApiModelProperty(value = "备注")
     private java.lang.String spaceOne;
-	/**备用2*/
-	@Excel(name = "备用2", width = 15)
-    @ApiModelProperty(value = "备用2")
-    private java.lang.String spaceTwo;
+	/**计数数量*/
+	@Excel(name = "计数数量", width = 15)
+    @ApiModelProperty(value = "计数数量")
+    private Integer spaceTwo;
 	/**备用3*/
 	@Excel(name = "备用3", width = 15)
     @ApiModelProperty(value = "备用3")

@@ -30,6 +30,12 @@ public class PushInfo {
 
         TabAudioDevice audioId;
 
+        Integer isBegin;
+
+        TabAiModel beginEventTypes;
+
+        String beginName;
 
 
+        Integer pyType;
 }

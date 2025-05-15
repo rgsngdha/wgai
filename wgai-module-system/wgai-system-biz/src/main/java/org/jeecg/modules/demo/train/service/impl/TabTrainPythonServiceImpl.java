@@ -382,7 +382,7 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
             tabTrainLog.setModelId(id);
             tabTrainLog.setTrainLog(stringBuffer.toString());
 
-            if(text.length()<=1073741824){//小于2G保存一下
+            if(text.length()<=3999999){//小于2G保存一下
                 tabTrainLog.setCmdText(text);
             }else{
                 tabTrainLog.setCmdText("日志文件过于庞大舍弃了");
@@ -520,7 +520,7 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
     }
 
     // 捕捉进程输出的辅助方法
-    private static void executePythonScript(String[] cmd) {
+    public static void executePythonScript(String[] cmd) {
         try {
             Process proc = Runtime.getRuntime().exec(cmd);
 //        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream(), StandardCharsets.UTF_8))) {

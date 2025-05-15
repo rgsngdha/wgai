@@ -317,6 +317,9 @@ public class TabModelTryServiceImpl extends ServiceImpl<TabModelTryMapper, TabMo
     public Result<String> saveMake(List<picXml>  picXmll) {
         try{
             log.info("【当前标注内容大小:{}】",picXmll.size());
+
+
+
             TabEasyPic tabEasyPic=tabEasyPicMapper.selectById(picXmll.get(0).getPicId());  //获取图片
             //开始保存xml文件
 
@@ -325,7 +328,12 @@ public class TabModelTryServiceImpl extends ServiceImpl<TabModelTryMapper, TabMo
             tabEasyPic.setMarkXml(xmlpath);
             tabEasyPic.setMarkType("Y");
             tabEasyPic.setMarkTitle(picXmll.stream().map(picXml::getName).collect(Collectors.joining(",")));
-            tabEasyPicMapper.updateById(tabEasyPic);
+            if(StringUtils.isNotEmpty(picXmll.get(0).getName())){
+                tabEasyPic.setMarkFeature("标注图");
+            }else{
+                tabEasyPic.setMarkFeature("背景图");
+            }
+
 
             Integer yesMark=tabModelTryMapper.getMakeNum(tabEasyPic.getModelId(),"Y");
             Integer noMark=tabModelTryMapper.getMakeNum(tabEasyPic.getModelId(),"N");
@@ -335,6 +343,8 @@ public class TabModelTryServiceImpl extends ServiceImpl<TabModelTryMapper, TabMo
             tabModelTry.setPicNumber(sumPic+"");
             tabModelTryMapper.updateById(tabModelTry);
 
+            tabEasyPic.setRemake(tabModelTry.getPicName());
+            tabEasyPicMapper.updateById(tabEasyPic);
         }catch (Exception ex){
             ex.printStackTrace();
             return Result.error("标注保存失败");

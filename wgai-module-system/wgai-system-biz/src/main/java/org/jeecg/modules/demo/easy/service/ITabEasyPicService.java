@@ -11,4 +11,9 @@ import com.baomidou.mybatisplus.extension.service.IService;
  */
 public interface ITabEasyPicService extends IService<TabEasyPic> {
 
+    /***
+     * 重新计算图片数量 标记数量
+     */
+
+    public void  sumPic(String id);
 }

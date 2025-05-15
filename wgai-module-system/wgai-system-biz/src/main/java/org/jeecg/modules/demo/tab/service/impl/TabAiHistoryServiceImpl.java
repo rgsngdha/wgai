@@ -705,7 +705,7 @@ public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, Tab
         }
         try {
             TabAudioDevice tabAudioDevice=new TabAudioDevice();
-            if(tabAiModelBund.getIsAudio().equals("Y")&& StringUtils.isNotEmpty(tabAiModelBund.getAudioId())){
+            if(StringUtils.isNotEmpty(tabAiModelBund.getAudioId())&& tabAiModelBund.getIsAudio().equals("Y")){
                 tabAudioDevice=tabAudioDeviceMapper.selectById(tabAiModelBund.getAudioId());
 
             }

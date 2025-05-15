@@ -62,6 +62,14 @@ public class TabAiSubscriptionServiceImpl extends ServiceImpl<TabAiSubscriptionM
                     pushInfo.setAudioStatic(1);
                 }
 
+                if(StringUtils.isNotEmpty(aiSubscript.getIsBegin())&&aiSubscript.getIsBegin().equals("0")){
+                    pushInfo.setIsBegin(0);
+                    pushInfo.setBeginName(aiSubscript.getBeginName());
+                    pushInfo.setBeginEventTypes(tabAiModelServiceImpl.getById(aiSubscript.getBeginEventTypes()));
+                }else{
+                    pushInfo.setIsBegin(1);
+                }
+                pushInfo.setPyType(aiSubscript.getPyType());
                 PushList.add(pushInfo);
         //    }
     //    }

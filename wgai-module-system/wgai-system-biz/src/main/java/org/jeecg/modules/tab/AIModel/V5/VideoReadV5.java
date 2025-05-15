@@ -62,7 +62,7 @@ public class VideoReadV5 implements Runnable {
 
                 while (true) {
                     Boolean flag= (Boolean) redisTemplate.opsForValue().get(videoUrl+"V5"+userId);
-                    log.info("开始推理{}读取视频内容",flag);
+                  //  log.info("开始推理{}读取视频内容",flag);
                     if(!flag){
                         grabber.release();
                         break;

@@ -1,6 +1,7 @@
 package org.jeecg;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jeecg.common.util.oConvertUtils;
 import org.opencv.core.Core;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,18 +55,33 @@ public class JeecgSystemApplication extends SpringBootServletInitializer {
                 "opencvpath:"+opencvpath+"\n\t  "+
                 "audio:"+audiopath+"\n\t  "+
                 "----------------------------------------------------------");
-        File opencv=new File(opencvpath);
-        if(opencv.exists()){
-            System.load(opencvpath);
-        }else{
-            log.error("opencv文件不存在！请检查地址是否正确 或 是否编译opencv");
+        if(StringUtils.isNotEmpty(opencvpath)){
+            String [] opencvList=opencvpath.split(";");
+            for (int i = 0; i <opencvList.length ; i++) {
+                File opencv=new File(opencvList[i]);
+                if(opencv.exists()){
+                    System.load(opencvList[i]);
+                   // log.info(Core.getBuildInformation());
+                    log.info("opencv加载成功");
+                    break;
+                }else{
+                    log.error("opencv文件不存在！请检查地址是否正确 或 是否编译opencv");
+                }
+            }
         }
 
-        File audio=new File(audiopath);
-        if(audio.exists()){
-            System.load(audiopath);
-        }else{
-            log.error("audio文件不存在！请检查地址是否正确 或 是否编译audio");
+        if(StringUtils.isNotEmpty(audiopath)){
+            String [] audiopathList=audiopath.split(";");
+            for (int i = 0; i <audiopathList.length ; i++) {
+                File opencv=new File(audiopathList[i]);
+                if(opencv.exists()){
+                    System.load(audiopathList[i]);
+                    log.info("audio加载成功");
+                    break;
+                }else{
+                    log.error("audio文件不存在！请检查地址是否正确 或 是否编译audio");
+                }
+            }
         }
 
     }

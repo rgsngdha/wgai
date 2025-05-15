@@ -162,21 +162,26 @@ public class WebSocket {
      */
     @OnMessage
     public void onMessage(String message, @PathParam(value = "userId") String userId) {
-        log.info("1【系统 WebSocket】收到客户端消息:" + message);
+        log.info("1【系统 WebSocket】收到客户端消息:" + message,userId);
+        if(userId.indexOf("audio")>-1){
+            log.info("【系统 WebSocket】收到客户端audio消息");
+        }else {
 
-        if(!"ping".equals(message) && !WebsocketConst.CMD_CHECK.equals(message)){
-            log.info("【系统 WebSocket】收到客户端消息:" + message);
-        }else{
-            log.debug("【系统 WebSocket】收到客户端消息:" + message);
+
+            if (!"ping".equals(message) && !WebsocketConst.CMD_CHECK.equals(message)) {
+                log.info("【系统 WebSocket】收到客户端消息:" + message);
+            } else {
+                log.debug("【系统 WebSocket】收到客户端消息:" + message);
+            }
+
+            //------------------------------------------------------------------------------
+            JSONObject obj = new JSONObject();
+            //业务类型
+            obj.put(WebsocketConst.MSG_CMD, WebsocketConst.CMD_CHECK);
+            //消息内容
+            obj.put(WebsocketConst.MSG_TXT, "心跳响应");
+            this.pushMessage(userId, obj.toJSONString());
         }
-        
-        //------------------------------------------------------------------------------
-        JSONObject obj = new JSONObject();
-        //业务类型
-        obj.put(WebsocketConst.MSG_CMD, WebsocketConst.CMD_CHECK);
-        //消息内容
-        obj.put(WebsocketConst.MSG_TXT, "心跳响应");
-        this.pushMessage(userId, obj.toJSONString());
         //------------------------------------------------------------------------------
     }
 

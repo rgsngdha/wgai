@@ -80,6 +80,8 @@ public class TabEasyPic implements Serializable {
 	@Excel(name = "标注文件", width = 15)
     @ApiModelProperty(value = "标注文件")
     private java.lang.String markXml;
+    @ApiModelProperty(value = "标注文件特征")
+    private java.lang.String markFeature;
 	/**标注标签*/
 	@Excel(name = "标注标签", width = 15)
     @ApiModelProperty(value = "标注标签")

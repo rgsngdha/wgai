@@ -20,7 +20,9 @@ public class pushEntity {
 //        "imageHeight":"1080(冗余参数,非必要)",
 //        "cameraUrl":"摄像头流地址",
 //        "video":"报警视频播放地址(冗余参数)"
-public String indexCode;
+public String cameraName;
+    public String indexCode;
+
     public String modelId;
     public String modelName;
     public String time;
@@ -31,4 +33,9 @@ public String indexCode;
     public String imageHeight;
     public String cameraUrl;
     public String video;
+
+    //报警数量
+    public Integer aiNumber;
+    //报警内容
+    private String  modelText;
 }

@@ -10,10 +10,10 @@ import org.opencv.objdetect.CascadeClassifier;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author wggg
@@ -21,64 +21,52 @@ import java.util.List;
  */
 public class szrUtil {
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
 
-        System.load("F:\\JAVAAI\\opencv481\\opencv\\build\\java\\x64\\opencv_java481.dll");
 
-        String faceImagePath = "F:\\JAVAAI\\shuziren\\zhangwei.png";
-        String audioPath = "F:\\JAVAAI\\shuziren\\1742880652832.wav";
-        String mouthCascadePath = "F:\\JAVAAI\\shuziren\\Mouth.xml";
+        int imageCount = 115;                               // 图片数量
 
-        // 1. 加载图像
-        Mat faceImage = Imgcodecs.imread(faceImagePath);
-        if (faceImage.empty()) {
-            System.err.println("无法加载人脸图像！");
-            return;
+
+
+        String imagePattern = "F:\\JAVAAI\\audio\\数字人\\zhangwei\\pic\\%08d.png";  // 帧图路径
+
+        double frameRate =15.38461538;
+        String audioPath="D:\\opt\\upFiles\\1746494451564.wav";
+        String outputPath="F:\\JAVAAI\\audio\\hecheng1.mp4";
+
+        try {
+            merge(imagePattern, imageCount, audioPath, outputPath);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        // 2. 转灰度
-        Mat gray = new Mat();
-        Imgproc.cvtColor(faceImage, gray, Imgproc.COLOR_BGR2GRAY);
-
-        // 3. 加载嘴巴检测模型
-        CascadeClassifier mouthDetector = new CascadeClassifier(mouthCascadePath);
-        if (mouthDetector.empty()) {
-            System.err.println("无法加载嘴巴 Haar 模型！");
-            return;
-        }
-
-        // 4. 检测嘴巴区域
-        MatOfRect mouths = new MatOfRect();
-        mouthDetector.detectMultiScale(gray, mouths, 1.1, 5, 0, new Size(30, 30), new Size());
-
-        Rect mouth = mouths.toArray().length > 0 ? mouths.toArray()[0] : null;
-        if (mouth == null) {
-            System.err.println("未检测到嘴巴区域！");
-            return;
-        }
-
-        // 5. 分析音频节奏
-        List<Boolean> openMouthFrames = analyzeAudioRhythm(audioPath, 25);  // 25帧每秒
-
-        // 6. 每帧处理嘴巴区域（放大/缩小）
-        for (int i = 0; i < openMouthFrames.size(); i++) {
-            Mat frame = faceImage.clone();
-            Rect roi = new Rect(mouth.x, mouth.y, mouth.width, mouth.height);
-            Mat mouthROI = new Mat(frame, roi);
-
-            // 放大嘴巴区域高度（模拟张嘴）
-            if (openMouthFrames.get(i)) {
-                Mat stretched = new Mat();
-                Size newSize = new Size(mouthROI.cols(), mouthROI.rows() + 20);
-                Imgproc.resize(mouthROI, stretched, newSize);
-                stretched.copyTo(frame.submat(new Rect(mouth.x, mouth.y, stretched.cols(), stretched.rows())));
-            }
-            System.out.println("输出");
-            // 保存帧图像
-            Imgcodecs.imwrite("F:\\JAVAAI\\shuziren\\outputframes\\rame_" + String.format("%03d", i) + ".jpg", frame);
-        }
-
-        System.out.println("处理完成！请使用 ffmpeg 合成视频。");
+//        ProcessBuilder pb = new ProcessBuilder(
+//                "ffmpeg",
+//                "-stream_loop", "-1",
+//                "-r", String.valueOf(frameRate),
+//                "-start_number", "0",
+//                "-i", imagePattern,
+//                "-i", audioPath,
+//                "-c:v", "libx264",
+//                "-pix_fmt", "yuv420p",
+//                "-c:a", "aac",
+//                "-b:a", "192k",
+//                "-shortest",
+//                outputPath
+//        );
+//
+//        pb.inheritIO(); // 打印 FFmpeg 执行过程日志（可选）
+//
+//        try {
+//            Process process = pb.start();
+//            int exitCode = process.waitFor();
+//            if (exitCode == 0) {
+//                System.out.println("✅ 视频合成成功：" + outputPath);
+//            } else {
+//                System.err.println("❌ FFmpeg 执行失败，退出码：" + exitCode);
+//            }
+//        } catch (IOException | InterruptedException e) {
+//            e.printStackTrace();
+//        }
     }
 
     // 简化：用音量作为判断标准（帧率 = 25fps）
@@ -112,5 +100,73 @@ public class szrUtil {
             buffer.write(temp, 0, bytesRead);
         }
         return buffer.toByteArray();
+    }
+
+
+    /**
+     * 获取音频时长（单位：秒）
+     */
+    public static double getAudioDuration(String audioPath) throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(
+                "ffprobe",
+                "-i", audioPath,
+                "-show_entries", "format=duration",
+                "-v", "quiet",
+                "-of", "csv=p=0"
+        );
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line = reader.readLine();
+            if (line != null) {
+                return Double.parseDouble(line.trim());
+            }
+        }
+
+        if (!process.waitFor(5, TimeUnit.SECONDS)) {
+            process.destroy();
+            throw new RuntimeException("FFprobe 超时未返回音频时长");
+        }
+
+        throw new RuntimeException("无法获取音频时长");
+    }
+
+    /**
+     * 合成视频
+     */
+    public static void merge(String imagePattern,
+                             int imageCount,
+                             String audioPath,
+                             String outputPath) throws IOException, InterruptedException {
+        double duration = getAudioDuration(audioPath);
+        double fps = imageCount / duration;
+
+        System.out.println("音频时长：" + duration + " 秒");
+        System.out.println("自动计算帧率：" + fps + " fps");
+
+        ProcessBuilder pb = new ProcessBuilder(
+                "ffmpeg",
+                "-r", String.valueOf(fps),
+                "-start_number", "1",
+                "-i", imagePattern,
+                "-i", audioPath,
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-shortest",
+                outputPath
+        );
+
+        pb.inheritIO(); // 打印 FFmpeg 输出
+
+        Process process = pb.start();
+        int exitCode = process.waitFor();
+        if (exitCode == 0) {
+            System.out.println("✅ 视频合成成功：" + outputPath);
+        } else {
+            System.err.println("❌ FFmpeg 执行失败，退出码：" + exitCode);
+        }
     }
 }

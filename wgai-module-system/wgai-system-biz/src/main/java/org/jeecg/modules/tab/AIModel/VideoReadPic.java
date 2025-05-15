@@ -11,6 +11,7 @@ import org.bytedeco.javacv.Java2DFrameConverter;
 import org.jeecg.common.util.RestUtil;
 import org.jeecg.modules.demo.tab.entity.PushInfo;
 import org.jeecg.modules.demo.tab.entity.TabAiBase;
+import org.jeecg.modules.tab.AIModel.identify.identifyTypeAll;
 import org.jeecg.modules.tab.entity.TabAiModel;
 import org.jeecg.modules.tab.entity.pushEntity;
 import org.opencv.core.*;
@@ -57,10 +58,31 @@ public class VideoReadPic implements Runnable{
     public void run() {
         threadLocalPushInfo.set(pushInfo);
         pushInfo=threadLocalPushInfo.get();
-        log.info("开始识别！！！！！！！！！！！！！！！！！！！！！！！！！！！！"+pushInfo.getPushUrl());
+        log.info("开始识别！"+pushInfo.getPushUrl()+"前置条件{}"+pushInfo.getIsBegin());
         List<TabAiModel> tabAiModels=pushInfo.getTabAiModelList();
         List<NetPush> nets = new ArrayList<>();
         List<String> claseeNames=new ArrayList<>();
+
+        if(pushInfo.getIsBegin()==0){//有前置条件
+
+            TabAiModel tabAiModel=pushInfo.getBeginEventTypes();
+            log.info("进入前置条件"+pushInfo.getPyType()+"当前类型"+tabAiModel.getSpareOne());
+            NetPush netmap =new NetPush();
+            Net net = null;
+            if(tabAiModel.getSpareOne().equals("1")){  //v3
+                net=Dnn.readNetFromDarknet(uploadpath+ File.separator +tabAiModel.getAiConfig(), uploadpath+ File.separator +tabAiModel.getAiWeights());
+            } else if (tabAiModel.getSpareOne().equals("2")||tabAiModel.getSpareOne().equals("3")) { //v5 v8
+                net = Dnn.readNetFromONNX(uploadpath+ File.separator +tabAiModel.getAiWeights());
+            }
+            net.setPreferableBackend(Dnn.DNN_BACKEND_OPENCV);
+            net.setPreferableTarget(Dnn.DNN_TARGET_CPU);  //cpu推理
+            claseeNames.add(uploadpath+ File.separator +tabAiModel.getAiNameName());
+            netmap.setNet(net);
+            netmap.setModelType(tabAiModel.getSpareOne());
+            nets.add(netmap);
+        }
+
+
         for (TabAiModel tabAiModel:tabAiModels) {
             NetPush netmap =new NetPush();
             Net net = null;
@@ -82,10 +104,15 @@ public class VideoReadPic implements Runnable{
         Mat frame = new Mat();
         String videoUrl=pushInfo.getVideoURL();
 
-        if(videoUrl.indexOf("rtsp")>-1){
-            log.info("rtsp开始解析：{}",videoUrl);
+        if(pushInfo.getPyType()==5){ // pytype字典
+            log.info("解码类型= 5 =开始解析：{}",videoUrl);
             FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(videoUrl);
             try {
+//                grabber.setVideoOption("hwaccel", "cuda"); // NVIDIA CUDA 硬解码
+////                grabber.setVideoOption("hwaccel_device", "0"); // GPU 设备号
+                grabber.setOption("threads", "auto"); // 自动选择线程数
+                grabber.setOption("preset", "ultrafast"); // 快速解码
+                grabber.setVideoOption("tune", "zerolatency"); // 低延迟模式
                 grabber.setOption("rtsp_transport", "tcp");  // 强制使用 TCP
                 grabber.setOption("max_delay", "500000");    // 设置最大延迟
                 grabber.setOption("buffer_size", "10485760"); // 设置10MB的缓冲区
@@ -96,16 +123,14 @@ public class VideoReadPic implements Runnable{
                 grabber.setOption("probesize", "32"); // 降低探测数据大小，快速锁定流
                 grabber.setOption("stimeout", "3000000");    // 3秒超时
                 grabber.setOption("skip_frame", "nokey"); // 只解码关键帧（I帧）
+                grabber.setOption("hwaccel", "auto"); // 硬件加速
+                grabber.setOption("pixel_format", "yuv420p"); // 像素格式
+                grabber.setOption("an", "1"); // 禁用音频
+                grabber.setOption("skip_frame", "nokey");// 跳过损坏帧
+                grabber.setOption("strict", "experimental");// 设置更严格的解码
+                grabber.setPixelFormat(avutil.AV_PIX_FMT_BGR24);
                 grabber.start(); // 开始读取视频
-                // 获取实际的像素格式
-                int pixelFormat = grabber.getPixelFormat();
-                log.info("Video Pixel Format: " + pixelFormat);
 
-                // 如果报错或者检测到不支持的像素格式，可以在这里根据需要调整
-                if (pixelFormat == avutil.AV_PIX_FMT_NONE) {
-                    // 设置为一个常用的像素格式，例如 YUV420P 或 RGB24
-                    grabber.setPixelFormat(avutil.AV_PIX_FMT_YUV420P);
-                }
                 log.info("读取成功视频：{}",videoUrl);
             } catch (Exception e) {
                e.printStackTrace();
@@ -128,7 +153,9 @@ public class VideoReadPic implements Runnable{
                         if(frames==null){
                             grabber.stop();
                             grabber.release();
-                            grabber = new FFmpegFrameGrabber(videoUrl);
+                            grabber.setOption("threads", "auto"); // 自动选择线程数
+                            grabber.setOption("preset", "ultrafast"); // 快速解码
+                            grabber.setVideoOption("tune", "zerolatency"); // 低延迟模式
                             grabber.setOption("rtsp_transport", "tcp");  // 强制使用 TCP
                             grabber.setOption("max_delay", "500000");    // 设置最大延迟
                             grabber.setOption("buffer_size", "10485760"); // 设置10MB的缓冲区
@@ -139,28 +166,64 @@ public class VideoReadPic implements Runnable{
                             grabber.setOption("probesize", "32"); // 降低探测数据大小，快速锁定流
                             grabber.setOption("stimeout", "3000000");    // 3秒超时
                             grabber.setOption("skip_frame", "nokey"); // 只解码关键帧（I帧）
+                            grabber.setOption("hwaccel", "auto"); // 硬件加速
+                            grabber.setOption("pixel_format", "yuv420p"); // 像素格式
+                            grabber.setOption("an", "1"); // 禁用音频
+                            grabber.setOption("skip_frame", "nokey");// 跳过损坏帧
+                            grabber.setOption("strict", "experimental");// 设置更严格的解码
+                            grabber.setPixelFormat(avutil.AV_PIX_FMT_BGR24);
                             grabber.start(); // 开始读取视频
                             // 获取实际的像素格式
                             int pixelFormat = grabber.getPixelFormat();
                             log.info("Video Pixel Format: " + pixelFormat);
 
-                            // 如果报错或者检测到不支持的像素格式，可以在这里根据需要调整
-                            if (pixelFormat == avutil.AV_PIX_FMT_NONE) {
-                                // 设置为一个常用的像素格式，例如 YUV420P 或 RGB24
-                                grabber.setPixelFormat(avutil.AV_PIX_FMT_YUV420P);
-                            }
                             log.info("当前没数据重新读取");
                             continue;
-                        }else if(frames.image!=null&&frames.keyFrame){ //
+                        }else if(frames.image!=null||(frames.keyFrame&&frames.image!=null)){ //
                             Mat opencvMat=bufferedImageToMat(converter.getBufferedImage(frames));
                             log.info("当前是关键帧+抓取到一帧{}:{}",pushInfo.getName(),videoUrl);
+                            boolean flagYes=false;
                             for (int i = 0; i < nets.size(); i++) {
-                                if(nets.get(i).getModelType().equals("1")){
-                                    detectObjects(pushInfo,opencvMat, nets.get(i).getNet(), claseeNames.get(i),tabAiModels.get(i));
-                                }else{
-                                    detectObjectsV5(pushInfo,opencvMat, nets.get(i).getNet(), claseeNames.get(i),tabAiModels.get(i));
+                                if(pushInfo.getIsBegin()==0){//前置条件
+
+                                    if(i==0){
+                                        identifyTypeAll identifyTypeAll=new  identifyTypeAll();
+                                        if(nets.get(i).getModelType().equals("1")){
+                                            if(!identifyTypeAll.detectObjects(pushInfo,opencvMat, nets.get(i).getNet(), claseeNames.get(i),tabAiModels.get(i))){
+                                                log.warn("验证不通过");
+                                                break;
+                                            }
+
+                                        }else{
+                                            if(!identifyTypeAll.detectObjectsV5(pushInfo,opencvMat, nets.get(i).getNet(), claseeNames.get(i),tabAiModels.get(i))){
+                                                log.warn("验证不通过");
+                                                break;
+                                            }
+
+                                        }
+                                        flagYes=true;
+                                        continue;
+                                    }
+                                    if(i!=0&&flagYes){
+                                        log.info("验证通过");
+                                        if(nets.get(i).getModelType().equals("1")){
+                                            detectObjects(pushInfo,opencvMat, nets.get(i).getNet(), claseeNames.get(i),tabAiModels.get(i));
+                                        }else{
+                                            detectObjectsV5(pushInfo,opencvMat, nets.get(i).getNet(), claseeNames.get(i),tabAiModels.get(i));
+                                        }
+                                    }
+
+                                }else if(pushInfo.getIsBegin()!=0){
+                                    log.info("不需要验证通过直接识别");
+                                    if(nets.get(i).getModelType().equals("1")){
+                                        detectObjects(pushInfo,opencvMat, nets.get(i).getNet(), claseeNames.get(i),tabAiModels.get(i));
+                                    }else{
+                                        detectObjectsV5(pushInfo,opencvMat, nets.get(i).getNet(), claseeNames.get(i),tabAiModels.get(i));
+                                    }
                                 }
+
                             }
+
                             opencvMat.release();
                         }else {
                          //   log.info("frames有数据但是图片没数据");
@@ -181,7 +244,7 @@ public class VideoReadPic implements Runnable{
 
         }else{
             log.info("普通视频流开始");
-            VideoCapture capture = new VideoCapture(pushInfo.getVideoURL());
+            VideoCapture capture = new VideoCapture(pushInfo.getVideoURL(),Videoio.CAP_ANY);
             if (!capture.isOpened()) {
                 log.info("Error: Unable to open video file.");
             }
@@ -235,7 +298,7 @@ public class VideoReadPic implements Runnable{
         net.forward(result, outBlobNames);
 
         // 处理检测结果
-        float confThreshold = 0.5f;
+        float confThreshold = 0.56f;
         List<Rect2d> boundingBoxes = new ArrayList<>();
         List<Float> confidences = new ArrayList<>();
         List<Integer> classIds = new ArrayList<>();
@@ -377,7 +440,7 @@ public class VideoReadPic implements Runnable{
         net.forward(result, outBlobNames);
 
         // 处理检测结果
-        float confThreshold = 0.55f;
+        float confThreshold = 0.56f;
         float nmsThreshold = 0.45f;
         List<Rect2d> boxes2d = new ArrayList<>();
         List<Float> confidences = new ArrayList<>();
@@ -439,7 +502,10 @@ public class VideoReadPic implements Runnable{
         log.info(confidences.size()+"类别下标啊"+indicesArray.length);
         // 在图像上绘制保留的边界框
         int c=0;
-        String audioText="";
+        String  audioText="";
+        Integer warnNumber=0;
+        String  warnText="";
+        String  warnName="";
         for (int idx : indicesArray) {
             // 添加类别标签
             Rect2d box = boxes2d.get(idx);
@@ -459,7 +525,11 @@ public class VideoReadPic implements Runnable{
                 aiBase.setChainName(name);
 
             }
-            audioText +="识别到"+aiBase.getChainName()+aiBase.getRemark();
+
+            audioText +=aiBase.getRemark()+aiBase.getSpaceOne();
+            warnNumber+=aiBase.getSpaceTwo()==null?0:aiBase.getSpaceTwo();
+            warnText +=StringUtils.isEmpty(aiBase.getRemark())==true?"":aiBase.getRemark();
+            warnName+=aiBase.getChainName()+",";
            // Imgproc.rectangle(image, new Point(box.x, box.y), new Point(box.x + box.width, box.y + box.height),CommonColors(c), 2);
             Imgproc.rectangle(image,
                     new Point(xzb, yzb),
@@ -492,14 +562,17 @@ public class VideoReadPic implements Runnable{
         String base64Img=base64Image(saveName);
         //组装参数
         pushEntity push=new  pushEntity();
+        push.setCameraName(pushInfo.getName());
         push.setVideo(pushInfo.getVideoURL());
         push.setType("图片");
         push.setCameraUrl(pushInfo.getVideoURL());
         push.setAlarmPicData(base64Img);
         push.setTime(System.currentTimeMillis()+"");
-        push.setModelId(tabAiModel.getId());
+        push.setModelId(tabAiModel.getAiName());
         push.setIndexCode(pushInfo.getIndexCode());
-        push.setModelName(tabAiModel.getAiName());
+        push.setModelName(warnName);
+        push.setAiNumber(warnNumber);
+        push.setModelText(warnText);
         JSONObject ob=null;
         try {
             Long b=System.currentTimeMillis();

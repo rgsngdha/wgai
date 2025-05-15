@@ -137,6 +137,7 @@ public class TabAiHistoryController extends JeecgController<TabAiHistory, ITabAi
 		 log.info("当前开始时间{}",System.currentTimeMillis());
 		 QueryWrapper<TabAuditSetting> tabAuditSettingQueryWrapper=new QueryWrapper<>();
 		 tabAuditSettingQueryWrapper.eq("is_start",1); //当前使用中的
+		 tabAuditSettingQueryWrapper.eq("audio_type",0); //语音识别
 		 List<TabAuditSetting> TabAuditSettingList=tabAuditSettingService.list(tabAuditSettingQueryWrapper);
 		 if(TabAuditSettingList.size()>0){
 			 return tabAiHistoryService.aiAudioSetting(TabAuditSettingList.get(0), path,uploadpath);

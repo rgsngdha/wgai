@@ -1,5 +1,6 @@
 package org.jeecg.modules.demo.easy.controller;
 
+import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,8 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.system.query.QueryGenerator;
 import org.jeecg.common.util.oConvertUtils;
@@ -20,6 +23,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 
+import org.jeecg.modules.demo.train.entity.TabModelTry;
 import org.jeecgframework.poi.excel.ExcelImportUtil;
 import org.jeecgframework.poi.excel.def.NormalExcelConstants;
 import org.jeecgframework.poi.excel.entity.ExportParams;
@@ -102,7 +106,8 @@ public class TabEasyPicController extends JeecgController<TabEasyPic, ITabEasyPi
 		tabEasyPicService.updateById(tabEasyPic);
 		return Result.OK("编辑成功!");
 	}
-	
+
+
 	/**
 	 *   通过id删除
 	 *
@@ -114,7 +119,10 @@ public class TabEasyPicController extends JeecgController<TabEasyPic, ITabEasyPi
 	//@RequiresPermissions("org.jeecg.modules.demo:tab_easy_pic:delete")
 	@DeleteMapping(value = "/delete")
 	public Result<String> delete(@RequestParam(name="id",required=true) String id) {
+		TabEasyPic tabEasyPic=tabEasyPicService.getById(id);
 		tabEasyPicService.removeById(id);
+		//删除后需要重新计算模型
+		tabEasyPicService.sumPic(tabEasyPic.getModelId());
 		return Result.OK("删除成功!");
 	}
 	

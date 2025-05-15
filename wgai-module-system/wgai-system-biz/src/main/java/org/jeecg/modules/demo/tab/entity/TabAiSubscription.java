@@ -96,4 +96,18 @@ public class TabAiSubscription implements Serializable {
     @ApiModelProperty(value = "执行状态")
     Integer runState;
 
+    @ApiModelProperty(value = "是否需要前置")
+    @Dict(dicCode = "push_static")
+    String isBegin;
+
+    @ApiModelProperty(value = "前置模型-单选")
+    @Dict(dictTable = "tab_ai_model", dicCode = "id", dicText = "ai_name")
+    String beginEventTypes;
+
+    @ApiModelProperty(value = "前置模型-识别内容单选")
+    String beginName;
+
+    @Dict(dicCode = "py_type")
+    @ApiModelProperty(value = "解码脚本")
+    Integer pyType;
 }

@@ -146,6 +146,7 @@ public class ShiroConfig {
 
         //websocket排除
         filterChainDefinitionMap.put("/websocket/**", "anon");//系统通知和公告
+        filterChainDefinitionMap.put("/WebSocketAudio/**", "anon");//语音socket
         filterChainDefinitionMap.put("/newsWebsocket/**", "anon");//CMS模块
         filterChainDefinitionMap.put("/vxeSocket/**", "anon");//JVxeTable无痕刷新示例
 

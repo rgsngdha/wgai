@@ -9,6 +9,8 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.system.query.QueryGenerator;
 import org.jeecg.common.util.oConvertUtils;
@@ -115,7 +117,7 @@ public class TabTrainPythonController extends JeecgController<TabTrainPython, IT
 	 @GetMapping(value = "/startOnePy")
 	 public Result<String> startOnePy(@RequestParam(name="sort",required=true) String sort) {
 
-		TabModelTry modelTryList=tabModelTryService.list().get(0);
+		TabModelTry modelTryList=tabModelTryService.list(new LambdaQueryWrapper<TabModelTry>().orderByDesc(TabModelTry::getCreateTime)).get(0);
 		log.info("当前取值{}--模型名称:{}",modelTryList.getId(),modelTryList.getModelName());
 		tabTrainPythonService.startPy(modelTryList.getId(),sort);
 		return Result.OK("添加成功！");

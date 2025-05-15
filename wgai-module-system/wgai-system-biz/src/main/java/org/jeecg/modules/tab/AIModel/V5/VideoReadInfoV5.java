@@ -79,12 +79,12 @@ public class VideoReadInfoV5 implements Runnable{
           //  log.info("开始识别"+flag);
             MapTime mapTime= VideoSendReadCfgV5.matlist.poll();
 
-       //     log.info(mapTime+"开始识别"+flag);
+
             if(!flag){
                 break;
             }
             if(mapTime!=null){
-
+                log.info(mapTime+"开始识别"+flag);
                 log.info("【实际解析】-当前值{},当前时间{}",mapTime, VideoFrameReaderV5.millisecondsToHours(mapTime.times));
                 Mat frame=mapTime.mat;
                 // 将图像传递给模型进行目标检测
@@ -200,11 +200,13 @@ public class VideoReadInfoV5 implements Runnable{
 
                 }
 
-
-                if(tabAudioDevice!=null&&StringUtils.isNotEmpty(audiotext)){
-                  String token= getToken(tabAudioDevice);
-                  postAudioText(token,tabAudioDevice,audiotext);
+                if(StringUtils.isNotEmpty(tabAiModelBund.getAudioId())&& tabAiModelBund.getIsAudio().equals("Y")){
+                    if(tabAudioDevice!=null&&StringUtils.isNotEmpty(audiotext)){
+                        String token= getToken(tabAudioDevice);
+                        postAudioText(token,tabAudioDevice,audiotext);
+                    }
                 }
+
 
 
                 redisTemplate.opsForValue().set(videoUrl+"timeV5"+userId,mapTime.times,365,TimeUnit.DAYS);
