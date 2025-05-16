@@ -36,6 +36,12 @@
 ![audio1](wg/vuestar.jpg)
 ## 建议有前后端基础知识再启动，目前运行&安装&教学文档只有加入知识星球获取  不加知识星球有问题请去提issues或自行解决
 
+>####  ❤ **更新展示**
+>* <img src="wg/szr.png" height="200px">
+>* 图片变成动态数字人视频/设置自己自己的文本与音色
+>* <video src="https://img.nj-kj.com/zhangwei_1745562613859_1745465917540_1745567724504.mp4" controls="controls" width="500" height="300">您的浏览器不支持播放该视频！</video>
+>***
+
 
 # 操作手册
 ## 如何一键训练？如何推送给第三方平台？请看VCR
