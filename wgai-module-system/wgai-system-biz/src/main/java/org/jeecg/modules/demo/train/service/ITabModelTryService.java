@@ -19,4 +19,7 @@ public interface ITabModelTryService extends IService<TabModelTry> {
 
     //保存标注内容
     public Result<String> saveMake(List<picXml> picXml);
+
+    //更新标记图片数量
+    public Result<String> saveMakeNum();
 }

@@ -1,5 +1,6 @@
 package org.jeecg.modules.demo.train.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.extern.log4j.Log4j;
 import lombok.extern.slf4j.Slf4j;
@@ -351,6 +352,19 @@ public class TabModelTryServiceImpl extends ServiceImpl<TabModelTryMapper, TabMo
         }
    
         return Result.ok("标注保存成功");
+    }
+
+    @Override
+    public Result<String> saveMakeNum() {
+        List<TabModelTry> tabModelTryList=this.list();
+        for (TabModelTry tabmodel:tabModelTryList) {
+            List<TabEasyPic> tabEasyPicListALL=tabEasyPicMapper.selectList(new LambdaQueryWrapper<TabEasyPic>().eq(TabEasyPic::getModelId,tabmodel.getId()));
+            List<TabEasyPic> tabEasyPicListY=tabEasyPicMapper.selectList(new LambdaQueryWrapper<TabEasyPic>().eq(TabEasyPic::getModelId,tabmodel.getId()).eq(TabEasyPic::getMarkType,"Y"));
+            tabmodel.setPicNumber(tabEasyPicListALL.size()+"");
+            tabmodel.setMakeNumber(tabEasyPicListY.size()+"");
+            this.updateById(tabmodel);
+        }
+           return Result.ok("更新图片标记数成功");
     }
 
 }

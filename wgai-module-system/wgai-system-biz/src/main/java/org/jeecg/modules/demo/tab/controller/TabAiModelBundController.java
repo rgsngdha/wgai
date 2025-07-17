@@ -81,12 +81,26 @@ public class TabAiModelBundController extends JeecgController<TabAiModelBund, IT
 								   @RequestParam(name="pageNo", defaultValue="1") Integer pageNo,
 								   @RequestParam(name="pageSize", defaultValue="10") Integer pageSize,
 								   HttpServletRequest req) {
+
 		QueryWrapper<TabAiModelBund> queryWrapper = QueryGenerator.initQueryWrapper(tabAiModelBund, req.getParameterMap());
+		queryWrapper.eq("space_one","0");
 		Page<TabAiModelBund> page = new Page<TabAiModelBund>(pageNo, pageSize);
 		IPage<TabAiModelBund> pageList = tabAiModelBundService.page(page, queryWrapper);
 		return Result.OK(pageList);
 	}
+	 @ApiOperation(value="模型绑定-分页列表查询", notes="模型绑定-分页列表查询")
+	 @GetMapping(value = "/listVideo")
+	 public Result<IPage<TabAiModelBund>> queryPageListVideo(TabAiModelBund tabAiModelBund,
+														@RequestParam(name="pageNo", defaultValue="1") Integer pageNo,
+														@RequestParam(name="pageSize", defaultValue="10") Integer pageSize,
+														HttpServletRequest req) {
 
+		 QueryWrapper<TabAiModelBund> queryWrapper = QueryGenerator.initQueryWrapper(tabAiModelBund, req.getParameterMap());
+		 queryWrapper.ne("space_one","0");
+		 Page<TabAiModelBund> page = new Page<TabAiModelBund>(pageNo, pageSize);
+		 IPage<TabAiModelBund> pageList = tabAiModelBundService.page(page, queryWrapper);
+		 return Result.OK(pageList);
+	 }
 
 	 /**
 	  * 树形查询

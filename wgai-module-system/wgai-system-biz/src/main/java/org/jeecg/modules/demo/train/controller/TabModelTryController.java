@@ -75,12 +75,17 @@ public class TabModelTryController extends JeecgController<TabModelTry, ITabMode
 								   @RequestParam(name="pageNo", defaultValue="1") Integer pageNo,
 								   @RequestParam(name="pageSize", defaultValue="10") Integer pageSize,
 								   HttpServletRequest req) {
+
+
+
 		QueryWrapper<TabModelTry> queryWrapper = QueryGenerator.initQueryWrapper(tabModelTry, req.getParameterMap());
 		Page<TabModelTry> page = new Page<TabModelTry>(pageNo, pageSize);
 		IPage<TabModelTry> pageList = tabModelTryService.page(page, queryWrapper);
 		return Result.OK(pageList);
 	}
-	
+
+
+
 	/**
 	 *   添加
 	 *
@@ -147,18 +152,30 @@ public class TabModelTryController extends JeecgController<TabModelTry, ITabMode
 	}
 	 @ApiOperation(value="获取模型下所有图片列表", notes="获取模型下所有图片列表")
 	 @GetMapping(value = "/listPic")
-	 public Result<?> listPic(@RequestParam(name="id",required=true) String id) {
+	 public Result<?> listPic(@RequestParam(name="id",required=true) String id ,  @RequestParam(name="pageNo", defaultValue="1") Integer pageNo,
+							  @RequestParam(name="pageSize", defaultValue="10") Integer pageSize) {
 
 		 List<TabModelTryOrg> tabModelTryOrg = tabModelTryOrgService.list(new QueryWrapper<TabModelTryOrg>().eq("model_id",id));
 		 if(tabModelTryOrg.size()<=0) {
 			 return Result.error("未找到对应数据");
 		 }
 		 //List<TabEasyPic> pic=tabEasyPicService.listByIds(tabModelTryOrg.stream().map(TabModelTryOrg::getPicId).collect(Collectors.toList()));
+
+		 Page<TabEasyPic> page = new Page<TabEasyPic>(pageNo, pageSize);
 		 QueryWrapper<TabEasyPic> queryWrapper=new QueryWrapper<>();
 		 queryWrapper.eq("model_id",id);
 		 queryWrapper.orderByAsc("mark_Type");
-		 List<TabEasyPic> pic=tabEasyPicService.list(queryWrapper);
+		 IPage<TabEasyPic> pic=tabEasyPicService.page(page,queryWrapper);
 		 return  Result.ok(pic);
+	 }
+
+
+	 @ApiOperation(value="更新标记数", notes="更新标记数")
+	 @GetMapping(value = "/startMakeNum")
+	 public Result<?> startMakeNum() {
+
+
+		 return  tabModelTryService.saveMakeNum();
 	 }
 	/**
 	 *   通过id删除
