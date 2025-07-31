@@ -104,6 +104,46 @@ public class TabAiSubscriptionNewController extends JeecgController<TabAiSubscri
 	}
 
 
+
+	 /**
+	  *  编辑
+	  *
+	  * @param tabAiSubscriptionNew
+	  * @return
+	  */
+	 @AutoLog(value = "多程第三方订阅-开始执行")
+	 @ApiOperation(value="多程第三方订阅-开始执行", notes="多程第三方订阅-开始执行")
+	 //@RequiresPermissions("org.jeecg.modules.demo:tab_ai_subscription_new:edit")
+	 @RequestMapping(value = "/startBatch", method = {RequestMethod.PUT,RequestMethod.POST})
+	 public Result<String> startBatch(@RequestBody TabAiSubscriptionNew tabAiSubscriptionNew) {
+
+		 try {
+			 String ids=tabAiSubscriptionNew.getId();
+			 List<TabAiSubscriptionNew> tabAiSubscriptionNews=tabAiSubscriptionNewService.listByIds(Arrays.asList(ids.split(",")));
+			 for (TabAiSubscriptionNew tab:tabAiSubscriptionNews) { // 1运行  0未运行
+				 if(tabAiSubscriptionNew.getRunState()==1){ //开始运行
+					 if(tab.getRunState()==1){
+						 continue;
+					 }else{
+						 tabAiSubscriptionNewService.startAi(tab);
+					 }
+				 }else { //终止运行
+					 if(tab.getRunState()==0){
+						 continue;
+					 }else{
+						 tabAiSubscriptionNewService.stopAi(tab);
+					 }
+				 }
+			 }
+
+
+		 } catch (IOException e) {
+			 throw new RuntimeException(e);
+		 }
+
+		 return Result.OK("批量操作成功!");
+	 }
+
 	 /**
 	  *  编辑
 	  *

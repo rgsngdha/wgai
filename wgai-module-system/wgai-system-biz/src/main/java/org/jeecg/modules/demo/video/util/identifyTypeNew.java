@@ -106,7 +106,7 @@ public class identifyTypeNew {
 
             int[] indicesArray = indices.toArray();
             // 获取保留的边界框
-            if(indicesArray.length>20){
+            if(indicesArray.length>50){
                 log.error("怎么可能类别太大 20就是上限");
                 return false;
             }
@@ -195,7 +195,7 @@ public class identifyTypeNew {
                 }
             }
 
-            if (confidences.size() <= 0) {
+            if (confidences.size() <= 0||confidences.size()>200) {
                 log.warn(tabAiSubscriptionNew.getName() + ":当前未检测到内容");
                 return false;
             }
@@ -213,7 +213,7 @@ public class identifyTypeNew {
 
             int[] indicesArray = indices.toArray();
             // 获取保留的边界框
-            if(indicesArray.length>20){
+            if(indicesArray.length>50){
                 log.error("怎么可能类别太大 20就是上限");
                 return false;
             }
@@ -307,7 +307,7 @@ public class identifyTypeNew {
 
         int[] indicesArray = indices.toArray();
         // 获取保留的边界框
-        if(indicesArray.length>20){
+        if(indicesArray.length>50){
             log.error("怎么可能类别太大 20就是上限");
             return false;
         }
@@ -398,7 +398,7 @@ public class identifyTypeNew {
         long time = Long.parseLong(pushInfo.getEventNumber());
         Object beforTime = redisTemplate.opsForValue().get(netPush.getId());
         if (beforTime == null) {
-            log.info("当前间隔消失可以推送了-间隔时间{}-{}", time, pushInfo.getId());
+            log.info("当前间隔消失可以推送了-间隔时间{}-当前可以推送的是{}", time, pushInfo.getName());
 
         } else {
             return false;
@@ -419,8 +419,8 @@ public class identifyTypeNew {
         net.forward(result, outBlobNames);
 
         // 处理检测结果
-        float confThreshold = 0.42f;
-        float nmsThreshold = 0.41f;
+        float confThreshold = 0.45f;
+        float nmsThreshold = 0.45f;
         List<Rect2d> boxes2d = new ArrayList<>();
         List<Float> confidences = new ArrayList<>();
         List<Integer> classIds = new ArrayList<>();
@@ -459,8 +459,8 @@ public class identifyTypeNew {
             }
         }
         boolean flag;
-        if (confidences.size() <= 0) {
-            log.warn(pushInfo.getName() + ":当前未检测到内容");
+        if (confidences.size() <= 0||confidences.size()>200) {
+            log.warn(pushInfo.getName() + ":当前未检测到内容：{}-{}",netPush.getTabAiModel().getAiName(),confidences.size());
             return false;
         }
         // 执行非最大抑制，消除重复的边界框
@@ -477,8 +477,16 @@ public class identifyTypeNew {
 
         int[] indicesArray = indices.toArray();
         // 获取保留的边界框
-        if(indicesArray.length>20){
-            log.error("怎么可能类别太大 20就是上限");
+        if(indicesArray.length>50){
+
+            String saveName="D://error";
+            log.info("错误存储地址{}", saveName);
+            File imageFile = new File(saveName);
+            if (!imageFile.exists()) {
+                imageFile.mkdirs();
+            }
+            Imgcodecs.imwrite(saveName+"/"+System.currentTimeMillis()+".jpg", image);
+            log.error("怎么可能类别太大 20就是上限:当前：{}",indicesArray.length);
             return false;
         }
         log.info(confidences.size() + "类别下标啊" + indicesArray.length);
@@ -834,7 +842,7 @@ public class identifyTypeNew {
                     }
                 }
 
-                if (confidences.size() <= 0) {
+                if (confidences.size() <= 0||confidences.size()>200) {
                     log.warn("录像当前未检测到内容");
                 }
                 // 执行非最大抑制，消除重复的边界框
@@ -853,7 +861,7 @@ public class identifyTypeNew {
                 // 获取保留的边界框
 
                 log.info(confidences.size() + "类别下标啊" + indicesArray.length);
-                if(indicesArray.length>20){
+                if(indicesArray.length>50){
                     log.error("怎么可能类别太大 20就是上限");
                     writer.write(image);
                     continue;
@@ -912,14 +920,23 @@ public class identifyTypeNew {
 
 
     public Scalar getColor(String color){
-        String[] parts = color.split(",");
-        int r = Integer.parseInt(parts[0].trim());
-        int g = Integer.parseInt(parts[1].trim());
-        int b = Integer.parseInt(parts[2].trim());
+        if(StringUtils.isNotEmpty(color)){
+            String[] parts = color.split(",");
+            log.info("颜色内容{}-数组长度{}",color,parts.length);
+            if(parts.length<3){
+                return  CommonColors(1);
+            }
+            int r = Integer.parseInt(parts[0].trim());
+            int g = Integer.parseInt(parts[1].trim());
+            int b = Integer.parseInt(parts[2].trim());
 
 // 注意：OpenCV 中是 BGR 顺序
-        Scalar scalar = new Scalar(b, g, r);
-        return  scalar;
+            Scalar scalar = new Scalar(b, g, r);
+            return  scalar;
+        }else{
+            return  CommonColors(1);
+        }
+
     }
 
 }

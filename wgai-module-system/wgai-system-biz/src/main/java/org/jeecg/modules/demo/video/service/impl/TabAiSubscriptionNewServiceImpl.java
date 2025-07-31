@@ -2,6 +2,7 @@ package org.jeecg.modules.demo.video.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jeecg.modules.demo.tab.service.impl.TabAiBaseServiceImpl;
 import org.jeecg.modules.demo.video.entity.TabAiModelNew;
 import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
@@ -10,6 +11,8 @@ import org.jeecg.modules.demo.video.mapper.TabAiSubscriptionNewMapper;
 import org.jeecg.modules.demo.video.mapper.TabAiVideoSettingMapper;
 import org.jeecg.modules.demo.video.service.ITabAiSubscriptionNewService;
 
+import org.jeecg.modules.demo.video.util.RedisCacheHolder;
+import org.jeecg.modules.demo.video.util.VideoReadPic;
 import org.jeecg.modules.demo.video.util.VideoReadPicNew;
 import org.jeecg.modules.tab.AIModel.NetPush;
 import org.jeecg.modules.tab.entity.TabAiModel;
@@ -66,6 +69,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
             tabAiBaseService.SendRedisBase();
             //写作开关
             redisTemplate.opsForValue().set(tabAiSubscriptionNew.getId()+"newRunPush",true);
+            RedisCacheHolder.put(tabAiSubscriptionNew.getId()+"newRunPush",true);
             List<NetPush> NetPushList=new ArrayList<>();
             //查询子项
             List<TabAiVideoSetting> tabAiVideoSettingList=tabAiVideoSettingMapper.selectList(new QueryWrapper<TabAiVideoSetting>().eq("sub_id",tabAiSubscriptionNew.getId()));
@@ -101,6 +105,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
                         endPush.setModelType(theEnd.getSpareOne());
                         endPush.setTabAiModel(theEnd);
                         endPush.setUploadPath(upLoadPath);
+
                         BeforNetPushList.add(endPush);
 
                         allPush.setIsBefor(1);
@@ -136,9 +141,12 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
 
             log.info("[当前开始执行推理]{}",tabAiSubscriptionNew.getName());
             //开始取流
-            ExecutorService executor = Executors.newCachedThreadPool();
+            ExecutorService executor = Executors.newFixedThreadPool(64);
+                    //Executors.newCachedThreadPool(4);
+
             //判断取流方式
             executor.submit(new VideoReadPicNew(tabAiSubscriptionNew,redisTemplate));
+          //  executor.submit(new VideoReadPic(tabAiSubscriptionNew,redisTemplate));
         }catch (IOException ex  ){
             ex.printStackTrace();
             log.error("[当前错误读取文件错误]");
@@ -151,7 +159,10 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
         }
         tabAiModel.setAiWeights(upLoadPath+ File.separator +tabAiModel.getAiWeights());
         tabAiModel.setAiNameName(upLoadPath+ File.separator +tabAiModel.getAiNameName());
-        tabAiModel.setAiName(name);
+        if(StringUtils.isNotEmpty(name)){
+            tabAiModel.setAiName(name);
+        }
+
         return  tabAiModel;
     }
 
@@ -182,6 +193,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
     @Override
     public void stopAi(TabAiSubscriptionNew tabAiSubscriptionNew) {
         redisTemplate.opsForValue().set(tabAiSubscriptionNew.getId()+"newRunPush",false);
+        RedisCacheHolder.put(tabAiSubscriptionNew.getId()+"newRunPush",false);
         tabAiSubscriptionNew.setRunState(0);
         this.updateById(tabAiSubscriptionNew);
 
