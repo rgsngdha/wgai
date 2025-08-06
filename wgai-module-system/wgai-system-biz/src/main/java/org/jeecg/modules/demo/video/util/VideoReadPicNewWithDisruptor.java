@@ -23,6 +23,7 @@ import static org.jeecg.modules.tab.AIModel.AIModelYolo3.bufferedImageToMat;
  * 2. 每个线程独立的Mat副本
  * 3. 串行化DNN推理避免内存管理冲突
  * 4. 更好的资源生命周期管理
+ * yi lai ke  v i kou s 电动汽车
  */
 @Slf4j
 public class VideoReadPicNewWithDisruptor implements Runnable {

@@ -75,8 +75,12 @@ public class VideoReadPicNew implements Runnable {
     // 归还Mat对象到池中
     private void returnMat(Mat mat) {
         if (mat != null && !mat.empty()) {
-            mat.setTo(new Scalar(0)); // 清空内容
-            matPool.offer(mat);
+       //     mat.setTo(new Scalar(0)); // 清空内容
+            if (matPool.size() < 50) { // 限制池大小
+                matPool.offer(mat);
+            } else {
+                mat.release(); // 池满时释放
+            }
         }
     }
     // 获取复用的BufferedImage对象
@@ -170,15 +174,45 @@ public class VideoReadPicNew implements Runnable {
                 log.error("[处理异常]", exception);
             } finally {
                 log.info("[无论如何都要结束释放]");
-                if (grabber != null) {
-                    try {
-                        grabber.stop();
-                        grabber.release();
-                    } catch (Exception e) {
-                        log.error("[释放grabber异常]", e);
-                    }
-                }
+                cleanup( grabber);
             }
+        }
+    }
+
+    /**
+     * 清理资源
+     */
+    private void cleanup(FFmpegFrameGrabber grabber) {
+        log.info("[开始清理安全处理器] 流: {}", tabAiSubscriptionNew.getName());
+
+
+
+        if (grabber != null) {
+            try { grabber.stop(); } catch (Exception ignored) {}
+            try { grabber.release(); } catch (Exception ignored) {}
+        }
+
+        // 关闭线程池
+        shutdownExecutorService(SHARED_EXECUTOR, "SHARED_EXECUTOR");
+
+        // 清理ThreadLocal
+        identifyTypeNewLocal.remove();
+        // 清理对象池
+        matPool.clear();
+        imagePool.clear();
+
+        log.info("[安全处理器清理完成] 流: {}", tabAiSubscriptionNew.getName());
+    }
+
+    private void shutdownExecutorService(ExecutorService service, String name) {
+        try {
+            service.shutdown();
+            if (!service.awaitTermination(10, TimeUnit.SECONDS)) {
+                service.shutdownNow();
+                log.warn("[{}线程池强制关闭] 流: {}", name, tabAiSubscriptionNew.getName());
+            }
+        } catch (Exception e) {
+            log.error("[{}线程池关闭异常] 流: {}", name, tabAiSubscriptionNew.getName(), e);
         }
     }
     // 性能统计日志
@@ -426,8 +460,7 @@ public class VideoReadPicNew implements Runnable {
 
         // 解决swscaler警告的核心设置
         // 方案1：强制转换为标准yuv420p格式，避免yuvj420p的警告
-        grabber.setOption("vf", "format=yuv420p");  // 简化的格式转换
-        grabber.setPixelFormat(avutil.AV_PIX_FMT_YUV420P);  // 使用标准格式
+        grabber.setPixelFormat(avutil.AV_PIX_FMT_BGR24);
 
         // 或者方案2：如果需要保持原格式，则完全禁用swscaler警告
         // grabber.setOption("sws_flags", "print_info+accurate_rnd+bitexact");

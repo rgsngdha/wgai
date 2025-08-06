@@ -36,6 +36,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.jeecg.modules.demo.audio.util.audioSend.getToken;
 import static org.jeecg.modules.demo.audio.util.audioSend.postAudioText;
+import static org.jeecg.modules.demo.video.util.frame.FrameQualityFilter.printAverageRGB;
 import static org.jeecg.modules.tab.AIModel.AIModelYolo3.*;
 
 /**
@@ -399,7 +400,10 @@ public class identifyTypeNew {
         Object beforTime = redisTemplate.opsForValue().get(netPush.getId());
         if (beforTime == null) {
             log.info("当前间隔消失可以推送了-间隔时间{}-当前可以推送的是{}", time, pushInfo.getName());
-
+             if(printAverageRGB(image)){
+                setErrorImg(image,"huidutu");
+                log.info("当前是灰度图片");
+             };
         } else {
             return false;
         }
@@ -479,14 +483,8 @@ public class identifyTypeNew {
         // 获取保留的边界框
         if(indicesArray.length>50){
 
-            String saveName="D://error";
-            log.info("错误存储地址{}", saveName);
-            File imageFile = new File(saveName);
-            if (!imageFile.exists()) {
-                imageFile.mkdirs();
-            }
-            Imgcodecs.imwrite(saveName+"/"+System.currentTimeMillis()+".jpg", image);
-            log.error("怎么可能类别太大 20就是上限:当前：{}",indicesArray.length);
+            setErrorImg(image,"maxIndex");
+            log.info("最大消除后最大识别数量50 不可能大于50 "+indicesArray.length);
             return false;
         }
         log.info(confidences.size() + "类别下标啊" + indicesArray.length);
@@ -551,12 +549,13 @@ public class identifyTypeNew {
         if (!file.exists()) {
             file.mkdirs();
         }
-        String saveName = settingId;//pushInfo.getId();
-        if (StringUtils.isNotBlank(saveName)) {
-            saveName = savepath + saveName + ".jpg";
-        } else {
-            saveName = savepath + System.currentTimeMillis() + ".jpg";
-        }
+//        String saveName = settingId;//pushInfo.getId();
+//        if (StringUtils.isNotBlank(saveName)) {
+//            saveName = savepath + saveName + ".jpg";
+//        } else {
+        String   saveName = savepath + System.currentTimeMillis() + ".jpg";
+//        }
+
         log.info("存储地址{}", saveName);
         File imageFile = new File(saveName);
         if (imageFile.exists()) {
@@ -606,6 +605,17 @@ public class identifyTypeNew {
         return true;
     }
 
+    public void setErrorImg(Mat image,String txt){
+        String saveName="D://error";
+        log.info("错误存储地址{}", saveName);
+        File imageFile = new File(saveName);
+        if (!imageFile.exists()) {
+            imageFile.mkdirs();
+        }
+        Imgcodecs.imwrite(saveName+"/"+txt+System.currentTimeMillis()+".jpg", image);
+
+
+    }
 
     /***
      * 是否推送 /并录像
