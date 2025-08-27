@@ -16,8 +16,18 @@
 [![Contribute with Gitpod](https://img.shields.io/badge/Contribute%20with-Gitpod-908a85?logo=gitpod&color=green)](https://gitpod.io/#https://github.com/apache/hertzbeat)
 
 ## 🎡 <font color="green">介绍</font>
-> 开箱即用的JAVA AI平台融合了AI图像识别opencv、yolo、esayAI内核识别;AI智能客服、AI语言模型、可定制化自主离线化部署并自主化行业化使用
+> 简介：开箱即用的JAVA AI平台融合了AI图像识别opencv、yolo、esayAI内核识别;AI智能客服、AI语言模型、可定制化自主离线化部署并自主化行业化使用
 避免占用内存、GPU消耗训练与识别分开使用;支持yolov3、yolov5、yolov8模型 支持exel、txt等文本语言模型；
+> 
+## 🔆他能做什么？
+>1. ✅作为AI视频训练主机 -（训练自己的工业模型-下发模型到边缘视频AI分析盒子或直接平台使用）
+>2. ✅作为边缘视频AI分析盒子-（32G内存CPU16核 16路实时分析亲测可用目前已多家再使用-含报警录像-报警图片-报警内容）
+>3. ✅作为语音识别服务器、OCR识别服务器、chatGPT服务器、数字人服务器等
+>4. ✅不需要额外开发无缝接入第三方平台、分开部署可一台服务器N台边缘盒子 
+>5. ✅可自主离线化部署平台标注训练解放双手一件训练
+>6. ✅无商业版本也不会开商业版本！为往胜继绝学
+
+
 
 ## 🔆测试地址&账户
 > [<span style="color: red;"> http://1.95.152.91:9999/</span>](http://1.95.152.91:9999/)
