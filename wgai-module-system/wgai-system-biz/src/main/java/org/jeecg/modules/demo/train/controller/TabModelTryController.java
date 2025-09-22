@@ -25,6 +25,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 
 import org.jeecg.modules.demo.train.util.picXml;
+import org.jeecg.modules.tab.entity.TabAiModel;
+import org.jeecg.modules.tab.service.ITabAiModelService;
 import org.jeecgframework.poi.excel.ExcelImportUtil;
 import org.jeecgframework.poi.excel.def.NormalExcelConstants;
 import org.jeecgframework.poi.excel.entity.ExportParams;
@@ -52,11 +54,13 @@ import org.jeecg.common.aspect.annotation.AutoLog;
 @RequestMapping("/train/tabModelTry")
 @Slf4j
 public class TabModelTryController extends JeecgController<TabModelTry, ITabModelTryService> {
-	@Autowired
-	private ITabModelTryService tabModelTryService;
+
+	 @Autowired
+	 private ITabModelTryService tabModelTryService;
+	 @Autowired
+	 private ITabAiModelService iTabAiModelService;
 	 @Autowired
 	 private ITabModelTryOrgService tabModelTryOrgService;
-
 	 @Autowired
 	 private ITabEasyPicService tabEasyPicService;
 	/**
@@ -83,6 +87,8 @@ public class TabModelTryController extends JeecgController<TabModelTry, ITabMode
 		IPage<TabModelTry> pageList = tabModelTryService.page(page, queryWrapper);
 		return Result.OK(pageList);
 	}
+
+
 
 
 
@@ -123,8 +129,32 @@ public class TabModelTryController extends JeecgController<TabModelTry, ITabMode
 	 //@RequiresPermissions("org.jeecg.modules.demo:tab_model_try:add")
 	 @PostMapping(value = "/addMarkPic")
 	 public Result<String> addMarkPic(@RequestBody List<picXml>  picXml) {
-		 //tabModelTryService.save(tabModelTry);
+		 //
 		 return tabModelTryService.saveMake( picXml);
+	 }
+
+
+	 /**
+	  *   添加
+	  *
+	  * @param
+	  * @return
+	  */
+	 @AutoLog(value = "自动添加标注图片")
+	 @ApiOperation(value="自动添加标注图片", notes="自动添加标注图片")
+	 //@RequiresPermissions("org.jeecg.modules.demo:tab_model_try:add")
+	 @PostMapping(value = "/autoMarkPic")
+	 public Result<String> autoMarkPic(@RequestBody picXml  picXml) {
+		 //tabModelTryService.save(tabModelTry);
+		 QueryWrapper<TabEasyPic> queryWrapper=new QueryWrapper();
+
+		 if(picXml.getIsMark()==1){//0 是 1 否
+			 queryWrapper.and(w -> w.ne("mark_type", "Y").or().isNull("mark_type"));
+		 }
+		 queryWrapper.eq("model_id",picXml.getModelId());
+		 List<TabEasyPic> tabModelTryOrg = tabEasyPicService.list(queryWrapper);
+		 TabAiModel tabAiModel=iTabAiModelService.getById(picXml.getAiModel());
+		 return tabModelTryService.autoSaveMake( tabModelTryOrg,tabAiModel);
 	 }
 	/**
 	 *  编辑
@@ -164,7 +194,7 @@ public class TabModelTryController extends JeecgController<TabModelTry, ITabMode
 		 Page<TabEasyPic> page = new Page<TabEasyPic>(pageNo, pageSize);
 		 QueryWrapper<TabEasyPic> queryWrapper=new QueryWrapper<>();
 		 queryWrapper.eq("model_id",id);
-		 queryWrapper.orderByAsc("mark_Type");
+		 queryWrapper.orderByAsc("mark_Type","pic_name");
 		 IPage<TabEasyPic> pic=tabEasyPicService.page(page,queryWrapper);
 		 return  Result.ok(pic);
 	 }

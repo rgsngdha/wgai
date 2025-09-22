@@ -1,15 +1,20 @@
 package org.jeecg.modules.demo.video.util;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.bytedeco.ffmpeg.global.avcodec;
 import org.bytedeco.javacv.*;
 import org.jeecg.common.util.RestUtil;
+import org.jeecg.modules.demo.easy.entity.TabEasyPic;
 import org.jeecg.modules.demo.tab.entity.PushInfo;
 import org.jeecg.modules.demo.tab.entity.TabAiBase;
+import org.jeecg.modules.demo.train.util.picXml;
 import org.jeecg.modules.demo.video.entity.TabAiModelNew;
 import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
+import org.jeecg.modules.demo.video.entity.TabVideoUtil;
+import org.jeecg.modules.demo.video.util.reture.retureBoxInfo;
 import org.jeecg.modules.tab.AIModel.AIModelYolo3;
 import org.jeecg.modules.tab.AIModel.NetPush;
 import org.jeecg.modules.tab.AIModel.VideoSendReadCfg;
@@ -28,6 +33,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -54,8 +60,10 @@ public class identifyTypeNew {
 
 
     //v3 验证是否通过
-    public boolean detectObjects(TabAiSubscriptionNew tabAiSubscriptionNew, Mat image, Net net, List<String> classNames, NetPush netPush) {
-        boolean flag = false;
+    public retureBoxInfo detectObjects(TabAiSubscriptionNew tabAiSubscriptionNew, Mat image, Net net, List<String> classNames, NetPush netPush) {
+
+        retureBoxInfo retureBoxInfo=new retureBoxInfo();
+        retureBoxInfo.setFlag(false);
         try {
 
 
@@ -108,46 +116,193 @@ public class identifyTypeNew {
 
             if (indices.empty()) {
                 log.info("类别下标啊" + "未识别到内容");
-                return false;
+                return retureBoxInfo;
             }
 
             int[] indicesArray = indices.toArray();
             // 获取保留的边界框
             if(indicesArray.length>50){
                 log.error("怎么可能类别太大 20就是上限");
-                return false;
+                return retureBoxInfo;
             }
             log.info(confidences.size() + "类别下标啊" + indicesArray.length);
             // 在图像上绘制保留的边界框
 
+            List<retureBoxInfo> list=new ArrayList<>();
             for (int idx : indicesArray) {
+
+                retureBoxInfo returnBox2 = new retureBoxInfo();
                 // 添加类别标签
-                log.info("当前有多少" + confidences.get(idx));
                 Integer ab = classIds.get(idx);
                 String name = classNames.get(ab);
+                Rect2d box = boundingBoxes.get(idx);
+                double x = box.x;
+                double y = box.y;
+                double width = box.width * ((double) image.cols() / 640);
+                double height = box.height * ((double) image.rows() / 640);
+                double xzb = x * ((double) image.cols() / 640);
+                double yzb = y * ((double) image.rows() / 640);
+
                 TabAiBase aiBase = VideoSendReadCfg.map.get(name);
                 if (aiBase == null) {
+                    aiBase = new TabAiBase();
                     aiBase.setChainName(name);
+
                 }
+                log.info("当前类别{}验证内容：{}", name, netPush.getBeforText());
                 if (aiBase.getChainName().equals(netPush.getBeforText())) {
-                    flag = true;
-                    break;
+                    log.warn("验证通过{},{}：", name, netPush.getBeforText());
+                    returnBox2.setX(xzb);
+                    returnBox2.setY(yzb);
+                    returnBox2.setWidth(width);
+                    returnBox2.setHeight(height);
+                    retureBoxInfo.setFlag(true);
+                    list.add(returnBox2);
                 }
             }
 
         } catch (Exception ex) {
 
-            return false;
+            return retureBoxInfo;
         }
 
 
-        return flag;
+        return retureBoxInfo;
     }
 
+    /***
+     * 自动标注
+     * @param image
+     * @param net
+     * @param classNames
+     * @return
+     */
+    public List<picXml>  AutoDetectObjectsV5(TabEasyPic pic, Mat image, Net net, List<String> classNames) {
+
+        List<picXml> picXmls=new ArrayList<>();
+        try {
+
+
+            // 读取输入图像
+            Long a = System.currentTimeMillis();
+            // 将图像传递给模型进行目标检测
+            Mat blob = Dnn.blobFromImage(image, 1.0 / 255, new Size(640, 640), new Scalar(0), true, false);
+            net.setInput(blob);
+            // 将图像传递给模型进行目标检测
+            List<Mat> result = new ArrayList<>();
+            List<String> outBlobNames = net.getUnconnectedOutLayersNames();
+            net.forward(result, outBlobNames);
+
+            // 处理检测结果
+            float confThreshold = 0.42f;
+            float nmsThreshold = 0.41f;
+            List<Rect2d> boxes2d = new ArrayList<>();
+            List<Float> confidences = new ArrayList<>();
+            List<Integer> classIds = new ArrayList<>();
+
+            for (Mat output : result) {
+                int dims = output.dims();
+                int index = (int) output.size(0);
+                int rows = (int) output.size(1);
+                int cols = (int) output.size(2);
+                //
+                // Dims: 3, Rows: 25200, Cols: 8 row,Mat [ 1*25200*8*CV_32FC1, isCont=true, isSubmat=false, nativeObj=0x28dce2da990, dataAddr=0x28dd0ebc640 ]index:1
+                //    log.info("Dims: " + dims + ", Rows: " + rows + ", Cols: " + cols+" row,"+output.row(0)+"index:"+index);
+                Mat detectionMat = output.reshape(1, output.size(1));
+
+                for (int i = 0; i < detectionMat.rows(); i++) {
+                    Mat detection = detectionMat.row(i);
+                    Mat scores = detection.colRange(5, cols);
+                    Core.MinMaxLocResult minMaxResult = Core.minMaxLoc(scores);
+                    float confidence = (float) detection.get(0, 4)[0];
+                    Point classIdPoint = minMaxResult.maxLoc;
+
+                    if (confidence > confThreshold) {
+                        float centerX = (float) detection.get(0, 0)[0];
+                        float centerY = (float) detection.get(0, 1)[0];
+                        float width = (float) detection.get(0, 2)[0];
+                        float height = (float) detection.get(0, 3)[0];
+
+                        float left = centerX - width / 2;
+                        float top = centerY - height / 2;
+
+                        classIds.add((int) classIdPoint.x);
+                        confidences.add(confidence);
+                        boxes2d.add(new Rect2d(left, top, width, height));
+                        //  System.out.println("识别到了");
+                    }
+                }
+            }
+
+            if (confidences.size() <= 0||confidences.size()>200) {
+
+                return null;
+            }
+            // 执行非最大抑制，消除重复的边界框
+            MatOfRect2d boxes_mat = new MatOfRect2d();
+            boxes_mat.fromList(boxes2d);
+            log.info("confidences.size{}", confidences.size());
+            MatOfFloat confidences_mat = new MatOfFloat(Converters.vector_float_to_Mat(confidences));
+            MatOfInt indices = new MatOfInt();
+            Dnn.NMSBoxes(boxes_mat, confidences_mat, confThreshold, nmsThreshold, indices);
+            if (!boxes_mat.empty() && !confidences_mat.empty()) {
+                System.out.println("不为空");
+                Dnn.NMSBoxes(boxes_mat, confidences_mat, confThreshold, nmsThreshold, indices);
+            }
+
+            int[] indicesArray = indices.toArray();
+            // 获取保留的边界框
+            if(indicesArray.length>50){
+                log.error("怎么可能类别太大 20就是上限");
+                return picXmls;
+            }
+            //     log.info(confidences.size() + "类别下标啊" + indicesArray.length);
+            // 在图像上绘制保留的边界框
+            int c = 0;
+
+            for (int idx : indicesArray) {
+                // 添加类别标签
+                picXml picXml=new picXml();
+                Rect2d box = boxes2d.get(idx);
+                Integer ab = classIds.get(idx);
+                String name = classNames.get(ab);
+                float conf = confidences.get(idx);
+                double x = box.x;
+                double y = box.y;
+                double width = box.width * ((double) 700 / 640);
+                double height = box.height * ((double) 700 / 640);
+                double xzb = x * ((double) 700 / 640);
+                double yzb = y * ((double) 700 / 640);
+                if(xzb<0){
+                    xzb=0;
+                }
+                if(yzb<0){
+                    yzb=0;
+                }
+                picXml.setName(name);
+                picXml.setPicId(pic.getId());
+                picXml.setXmin(xzb+"");
+                picXml.setXmax(xzb+width+"");
+                picXml.setYmin(yzb+"");
+                picXml.setYmax(yzb+height+"");
+                picXml.setModelId(pic.getModelId());
+                picXml.setCanvaswidth(width);
+                picXml.setCanvasheight(height);
+                picXml.setYwidth(Double.parseDouble(String.valueOf(image.width())));
+                picXml.setYheight(Double.parseDouble(String.valueOf(image.width())));
+                picXmls.add(picXml);
+            }
+        } catch (Exception ex) {
+            return picXmls;
+        }
+        return picXmls;
+    }
 
     //v5 v8 V10 验证是否通过
-    public boolean detectObjectsV5(TabAiSubscriptionNew tabAiSubscriptionNew, Mat image, Net net, List<String> classNames, NetPush netPush) {
-        boolean flag = false;
+    public retureBoxInfo detectObjectsV5(TabAiSubscriptionNew tabAiSubscriptionNew, Mat image, Net net, List<String> classNames, NetPush netPush) {
+        retureBoxInfo returnBox=new retureBoxInfo();
+        returnBox.setFlag(false);
+
         try {
 
 
@@ -204,7 +359,7 @@ public class identifyTypeNew {
 
             if (confidences.size() <= 0||confidences.size()>200) {
                 log.warn(tabAiSubscriptionNew.getName() + ":当前未检测到内容");
-                return false;
+                return returnBox;
             }
             // 执行非最大抑制，消除重复的边界框
             MatOfRect2d boxes_mat = new MatOfRect2d();
@@ -222,16 +377,26 @@ public class identifyTypeNew {
             // 获取保留的边界框
             if(indicesArray.length>50){
                 log.error("怎么可能类别太大 20就是上限");
-                return false;
+                return returnBox;
             }
             //     log.info(confidences.size() + "类别下标啊" + indicesArray.length);
             // 在图像上绘制保留的边界框
             int c = 0;
 
+            List<retureBoxInfo> list=new ArrayList<>();
             for (int idx : indicesArray) {
+
+                retureBoxInfo returnBox2=new retureBoxInfo();
                 // 添加类别标签
                 Integer ab = classIds.get(idx);
                 String name = classNames.get(ab);
+                Rect2d box = boxes2d.get(idx);
+                double x = box.x;
+                double y = box.y;
+                double width = box.width * ((double) image.cols() / 640);
+                double height = box.height * ((double) image.rows() / 640);
+                double xzb = x * ((double) image.cols() / 640);
+                double yzb = y * ((double) image.rows() / 640);
 
                 TabAiBase aiBase = VideoSendReadCfg.map.get(name);
                 if (aiBase == null) {
@@ -242,22 +407,29 @@ public class identifyTypeNew {
                 log.info("当前类别{}验证内容：{}", name, netPush.getBeforText());
                 if (aiBase.getChainName().equals(netPush.getBeforText())) {
                     log.warn("验证通过{},{}：", name, netPush.getBeforText());
-                    flag = true;
-                    break;
+                    returnBox2.setX(xzb);
+                    returnBox2.setY(yzb);
+                    returnBox2.setWidth(width);
+                    returnBox2.setHeight(height);
+                    returnBox.setFlag(true);
+                    list.add(returnBox2);
                 }
+
             }
+            returnBox.setInfoList(list);
+
         } catch (Exception ex) {
-            return false;
+            return returnBox;
         }finally {
-            if(flag==false){
+            if(returnBox.isFlag()==false){
                 setBeforeImg(image,"before");
             }
         }
-        return flag;
+        return returnBox;
     }
 
 
-    public boolean detectObjectsDify(TabAiSubscriptionNew pushInfo, Mat image, NetPush netPush, RedisTemplate redisTemplate) {
+    public boolean detectObjectsDify(TabAiSubscriptionNew pushInfo, Mat image, NetPush netPush, RedisTemplate redisTemplate,List<retureBoxInfo> retureBoxInfos) {
 
         Net net = netPush.getNet();
         List<String> classNames = netPush.getClaseeNames();
@@ -405,17 +577,17 @@ public class identifyTypeNew {
     }
 
 
-    public boolean detectObjectsDifyV5(TabAiSubscriptionNew pushInfo, Mat image, NetPush netPush, RedisTemplate redisTemplate) {
+    public boolean detectObjectsDifyV5(TabAiSubscriptionNew pushInfo, Mat image, NetPush netPush, RedisTemplate redisTemplate,List<retureBoxInfo> retureBoxInfos) {
 
         long time = Long.parseLong(pushInfo.getEventNumber());
         Object beforTime = redisTemplate.opsForValue().get(netPush.getId());
         if (beforTime == null) {
-            log.info("当前间隔消失可以推送了-间隔时间{}-当前可以推送的是{}", time, pushInfo.getName());
-             if(printAverageRGB(image)){
-                setErrorImg(image,"huidutu");
-                log.info("当前是灰度图片");
-                return false;
-             };
+            log.info("当前间隔消失可以推送了-间隔时间{}-当前可以推送的是{},当前数据：{}", time, pushInfo.getName(),JSON.toJSONString(retureBoxInfos));
+//             if(printAverageRGB(image)){
+//                setErrorImg(image,"huidutu");
+//                log.info("当前是灰度图片");
+//                return false;
+//             };
 
         } else {
             return false;
@@ -437,7 +609,7 @@ public class identifyTypeNew {
 
         // 处理检测结果
         float confThreshold = 0.45f;
-        float nmsThreshold = 0.45f;
+        float nmsThreshold = 0.4f;
         List<Rect2d> boxes2d = new ArrayList<>();
         List<Float> confidences = new ArrayList<>();
         List<Integer> classIds = new ArrayList<>();
@@ -476,7 +648,7 @@ public class identifyTypeNew {
             }
         }
         boolean flag;
-        if (confidences.size() <= 0||confidences.size()>200) {
+        if (confidences.size() <= 0||confidences.size()>100) {
             log.warn(pushInfo.getName() + ":当前未检测到内容：{}-{}",netPush.getTabAiModel().getAiName(),confidences.size());
             //setBeforeImg(image,"end");
             return false;
@@ -508,6 +680,8 @@ public class identifyTypeNew {
         Integer warnNumber = 0;
         String warnText = "";
         String warnName = "";
+        //保存识别前的图片
+        setBeforeImg(image,"end");
         for (int idx : indicesArray) {
             // 添加类别标签
             Rect2d box = boxes2d.get(idx);
@@ -520,14 +694,36 @@ public class identifyTypeNew {
             double height = box.height * ((double) image.rows() / 640);
             double xzb = x * ((double) image.cols() / 640);
             double yzb = y * ((double) image.rows() / 640);
+
+            if(netPush.getIsFollow()==0){
+                log.info("[只要识别前置模型内的内容x:{},y:{},JSON:{}] ",xzb,yzb, JSON.toJSONString(retureBoxInfos));
+                boolean followFlag= retureBoxInfo.getLocalhost(retureBoxInfos,xzb,yzb,netPush.getFollowPosition());
+                if(!followFlag){
+                    log.info("[不在范围内到直接跳过]");
+                    continue;
+                }else{
+                    log.info("[在范围内开始推送： ]");
+                }
+            }
+
+            if(pushInfo.getIsBy()==0){//开启了 0开启 1未开启
+                boolean isPointFlag= isPointInArea(x, y,  Double.parseDouble(pushInfo.getTabVideoUtil().getCanvasStartx()), Double.parseDouble(pushInfo.getTabVideoUtil().getCanvasStarty()),  Double.parseDouble(pushInfo.getTabVideoUtil().getCanvasWidth()), Double.parseDouble(pushInfo.getTabVideoUtil().getCanvasHeight()));
+                log.info("[是否在区域内]:"+isPointFlag);
+                if(isPointFlag){
+                    log.info("[在区域内]");
+                }else{
+                    log.info("[不在区域内]");
+                    continue;
+                }
+            }
+
             Scalar color=CommonColors(c);
             TabAiBase aiBase = VideoSendReadCfg.map.get(name);
             if (aiBase == null) {
                 aiBase = new TabAiBase();
                 aiBase.setChainName(name);
 
-            }
-            else{
+            }else{
                 if(StringUtils.isNotEmpty(aiBase.getSpaceThree())&&aiBase.getSpaceThree().equals("N")){
                     log.warn("【当前不推送：{}】",name);
                     continue;
@@ -536,6 +732,7 @@ public class identifyTypeNew {
                 color=getColor(aiBase.getRgbColor());
             }
             log.error("【当前推送：{}】",name);
+
 
             audioText += aiBase.getRemark() + aiBase.getSpaceOne();
             warnNumber += aiBase.getSpaceTwo() == null ? 1 : aiBase.getSpaceTwo();
@@ -617,6 +814,14 @@ public class identifyTypeNew {
 
 
         return true;
+    }
+
+    public static boolean isPointInArea(double px, double py, double x, double y, double width, double height) {
+        double x2 = x + width;
+        double y2 = y + height;
+
+        // 检查点是否在区域内
+        return px >= x && px <= x2 && py >= y && py <= y2;
     }
 
     public void setErrorImg(Mat image,String txt){
@@ -776,7 +981,7 @@ public class identifyTypeNew {
 
 
                 String recordVideo = "";
-                if (pushInfo.getPushStatic() == 0) {
+                if (pushInfo.getPushStatic() == 0) {// 0 开启 1未开启
 
                     log.info("[推送第三方结果]：");
                     //是否录像
@@ -799,9 +1004,19 @@ public class identifyTypeNew {
                     } else {
                         log.info("未开启录像");
                     }
-                    JSONObject ob = RestUtil.post(pushInfo.getEventUrl(), (JSONObject) JSONObject.toJSON(push));
+                    if(!pushInfo.getEventUrl().equals("localhost")){ //不进行推送
+                        JSONObject ob = RestUtil.post(pushInfo.getEventUrl(), (JSONObject) JSONObject.toJSON(push));
+                        log.info("返回内容：" + ob);
 
-                    log.info("返回内容：" + ob);
+                    }
+
+                    if(pushInfo.getSaveLocalhost()==0){ //保存到本地
+                        log.info("本地也保存");
+
+                        // 获取 pushInfo 的路径部分
+                        JSONObject ob = RestUtil.post("http://127.0.0.1:9998/wgai/video/tabAiWarning/addPush", (JSONObject) JSONObject.toJSON(push));
+                        log.info("返回内容：" + ob);
+                    }
                     if (pushInfo.getSaveRecord() != 0 && StringUtils.isNotEmpty(recordVideo)) {  //不保存
                         File imageFile = new File(recordVideo);
                         if (imageFile.exists()) {
@@ -811,6 +1026,7 @@ public class identifyTypeNew {
                 } else {
                     log.info("不推送第三方结果：");
                 }
+
 
 
             } catch (Exception exception) {

@@ -1,5 +1,6 @@
 package org.jeecg.modules.demo.train.service.impl;
 
+import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.extern.log4j.Log4j;
@@ -15,6 +16,14 @@ import org.jeecg.modules.demo.train.mapper.TabModelTryMapper;
 import org.jeecg.modules.demo.train.mapper.TabModelTryOrgMapper;
 import org.jeecg.modules.demo.train.service.ITabModelTryService;
 import org.jeecg.modules.demo.train.util.picXml;
+import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
+import org.jeecg.modules.demo.video.util.identifyTypeNew;
+import org.jeecg.modules.tab.entity.TabAiModel;
+import org.opencv.core.Mat;
+import org.opencv.dnn.Dnn;
+import org.opencv.dnn.Net;
+import org.opencv.imgcodecs.Imgcodecs;
+import org.opencv.imgproc.Imgproc;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -24,13 +33,13 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
+import java.io.*;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -331,8 +340,11 @@ public class TabModelTryServiceImpl extends ServiceImpl<TabModelTryMapper, TabMo
             tabEasyPic.setMarkTitle(picXmll.stream().map(picXml::getName).collect(Collectors.joining(",")));
             if(StringUtils.isNotEmpty(picXmll.get(0).getName())){
                 tabEasyPic.setMarkFeature("标注图");
+                String jsonString = JSON.toJSONString(picXmll);
+                tabEasyPic.setMarkJson(jsonString);
             }else{
                 tabEasyPic.setMarkFeature("背景图");
+                tabEasyPic.setMarkJson("");
             }
 
 
@@ -352,6 +364,56 @@ public class TabModelTryServiceImpl extends ServiceImpl<TabModelTryMapper, TabMo
         }
    
         return Result.ok("标注保存成功");
+    }
+
+    @Override
+    public Result<String> autoSaveMake(List<TabEasyPic> tabEasyPic, TabAiModel tabAiModel) {
+
+        //自动识别开始
+        Thread trainingThread = new Thread(() -> {
+
+            identifyTypeNew identifyTypeNew=new identifyTypeNew();
+            for (TabEasyPic tabEasy:tabEasyPic) {
+                String picPath=upLoadPath+File.separator+tabEasy.getPicUrl();
+                log.info("当前图片地址{}",picPath);
+                Mat image = Imgcodecs.imread(picPath);
+                List<String> classNames= null;
+                try {
+                    classNames = Files.readAllLines(Paths.get(upLoadPath+ File.separator+tabAiModel.getAiNameName()));
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+
+                List<picXml> picXmls=identifyTypeNew.AutoDetectObjectsV5(tabEasy,  image,  getNetModel(tabAiModel),  classNames);
+                this.saveMake(picXmls);
+            }
+
+        });
+        trainingThread.start();
+
+        return Result.ok("正在处理中");
+    }
+
+    private static final ConcurrentHashMap<String, Net> GLOBAL_NET_CACHE = new ConcurrentHashMap<>();
+    public Net getNetModel(TabAiModel tabAiModel){
+
+        Net net= GLOBAL_NET_CACHE.get(tabAiModel.getId());
+        if(net==null){ //尽量减少消耗
+            if (tabAiModel.getSpareOne().equals("1")) {  //v3
+                net = Dnn.readNetFromDarknet(upLoadPath+File.separator+tabAiModel.getAiConfig(), upLoadPath+File.separator+tabAiModel.getAiWeights());
+            } else if (tabAiModel.getSpareOne().equals("2") || tabAiModel.getSpareOne().equals("3")) { //v5 v8
+                net = Dnn.readNetFromONNX( upLoadPath+File.separator+tabAiModel.getAiWeights());
+            }
+
+
+            net.setPreferableBackend(Dnn.DNN_BACKEND_CUDA);
+            net.setPreferableTarget(Dnn.DNN_TARGET_CUDA);  //gpu推理
+            log.info("[DNN推理规则：GPU]");
+            GLOBAL_NET_CACHE.put(tabAiModel.getId(),net);
+        }else{
+            log.info("【已经存在net直接返回】");
+        }
+        return net;
     }
 
     @Override

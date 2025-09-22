@@ -85,4 +85,29 @@ public class TabAiVideoSetting implements Serializable {
 	@Excel(name = "备用1", width = 15)
     @ApiModelProperty(value = "备用1")
     private java.lang.String spareOne;
+
+
+    /**是否跟随前置坐标*/
+    @Dict(dicCode = "push_static")
+    @Excel(name = "是否跟随前置坐标", width = 15)
+    @ApiModelProperty(value = "是否跟随前置坐标")
+    private Integer isFollow;
+
+
+
+    @Excel(name = "跟随最大距离", width = 15)
+    @ApiModelProperty(value = "跟随最大距离")
+    private Integer followPosition;
+
+
+    @Dict(dicCode = "push_static")
+    @Excel(name = "预警方式", width = 15)
+    @ApiModelProperty(value = "预警方式 null/1识别到预警2.未识别到预警")
+    private Integer warinngMethod;
+
+
+    @Excel(name = "未识别到预警文本", width = 15)
+    @ApiModelProperty(value = "未识别到预警文本")
+    private String noDifText;
+
 }

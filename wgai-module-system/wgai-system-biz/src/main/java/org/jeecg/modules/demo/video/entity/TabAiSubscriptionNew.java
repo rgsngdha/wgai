@@ -157,6 +157,11 @@ public class TabAiSubscriptionNew implements Serializable {
     @ApiModelProperty(value = "是否开启区域识别")
     private java.lang.Integer isBy;
 
+
+
+    @TableField(exist = false)
+    TabVideoUtil tabVideoUtil;
+
     @TableField(exist = false)
     List<TabAiVideoSetting> listSetting;
 

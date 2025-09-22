@@ -89,4 +89,7 @@ public class TabEasyPic implements Serializable {
     @ApiModelProperty(value = "模型id")
     @Dict(dictTable = "tab_model_try",dicCode = "id",dicText = "model_name")
     private java.lang.String modelId;
+
+    @ApiModelProperty(value = "标注内容")
+    private java.lang.String markJson;
 }

@@ -12,6 +12,7 @@ import org.jeecg.modules.demo.tab.service.impl.TabAiBaseServiceImpl;
 import org.jeecg.modules.demo.video.entity.TabAiModelNew;
 import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
 import org.jeecg.modules.demo.video.entity.TabAiVideoSetting;
+import org.jeecg.modules.demo.video.entity.TabVideoUtil;
 import org.jeecg.modules.demo.video.mapper.TabAiSubscriptionNewMapper;
 import org.jeecg.modules.demo.video.mapper.TabAiVideoSettingMapper;
 import org.jeecg.modules.demo.video.service.ITabAiSubscriptionNewService;
@@ -64,10 +65,14 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
     TabAiBaseServiceImpl tabAiBaseService;
 
     @Autowired
+    TabVideoUtilServiceImpl tabVideoUtilServiceImpl;
+
+    @Autowired
     RedisTemplate redisTemplate;
 
     @Value("${jeecg.path.upload}")
     private String upLoadPath;
+
     @Override
     public void startAi(TabAiSubscriptionNew tabAiSubscriptionNew)  {
         try {
@@ -113,7 +118,10 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
                         endPush.setModelType(theEnd.getSpareOne());
                         endPush.setTabAiModel(theEnd);
                         endPush.setUploadPath(upLoadPath);
-
+                        endPush.setIsFollow(tabAiVideoSetting.getIsFollow()==null?1:tabAiVideoSetting.getIsFollow());
+                        endPush.setFollowPosition(tabAiVideoSetting.getFollowPosition()==null?1:tabAiVideoSetting.getFollowPosition());
+                        endPush.setWarinngMethod(tabAiVideoSetting.getWarinngMethod()==null?0:tabAiVideoSetting.getWarinngMethod());
+                        endPush.setNoDifText(StringUtils.isEmpty(tabAiVideoSetting.getNoDifText())==true?"":tabAiVideoSetting.getNoDifText());
                         BeforNetPushList.add(endPush);
 
                         allPush.setIsBefor(1);
@@ -130,7 +138,8 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
                         allPush.setModelType(tabAiModel.getSpareOne());
                         allPush.setUploadPath(upLoadPath);
                         allPush.setIsBefor(0);
-
+                        allPush.setWarinngMethod(tabAiVideoSetting.getWarinngMethod()==null?0:tabAiVideoSetting.getWarinngMethod());
+                        allPush.setNoDifText(StringUtils.isEmpty(tabAiVideoSetting.getNoDifText())==true?"":tabAiVideoSetting.getNoDifText());
 
                     }
 
@@ -143,6 +152,16 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
             }
             //   tabAiSubscriptionNew.setTabAiModelNewList(tabAiModelNewsList);
             tabAiSubscriptionNew.setRunState(1);
+
+            if(tabAiSubscriptionNew.getIsBy()==0){//0开启 1为开启
+
+                tabAiSubscriptionNew.setTabVideoUtil(tabVideoUtilServiceImpl.getOne(new QueryWrapper<TabVideoUtil>().eq("video_id",tabAiSubscriptionNew.getId())));
+                log.info("开启区域入侵识别{}-{}",tabAiSubscriptionNew.getName(),tabAiSubscriptionNew.getTabVideoUtil().getId());
+
+            }else{
+                log.info("未开启区域入侵识别{}",tabAiSubscriptionNew.getName());
+            }
+
             this.updateById(tabAiSubscriptionNew);
             tabAiSubscriptionNew.setNetPushList(NetPushList);
             tabAiSubscriptionNew.setListSetting(tabAiVideoSettingList);
@@ -181,7 +200,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
 
     public Net getNetModel(TabAiSubscriptionNew tabAiSubscriptionNew,TabAiModel tabAiModel){
 
-        Net net= GLOBAL_NET_CACHE.get(tabAiModel.getId());
+        Net net= GLOBAL_NET_CACHE.get(tabAiSubscriptionNew.getId()+"_"+tabAiModel.getId());
         if(net==null){ //尽量减少消耗
             if (tabAiModel.getSpareOne().equals("1")) {  //v3
                 net = Dnn.readNetFromDarknet(tabAiModel.getAiConfig(), tabAiModel.getAiWeights());
@@ -207,7 +226,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
                 net.setPreferableTarget(Dnn.DNN_TARGET_CPU);
                 log.info("[DNN推理规则：OpenVINO]");
             }
-            GLOBAL_NET_CACHE.put(tabAiModel.getId(),net);
+            GLOBAL_NET_CACHE.put(tabAiSubscriptionNew.getId()+"_"+tabAiModel.getId(),net);
         }else{
             log.info("【已经存在net直接返回】");
         }

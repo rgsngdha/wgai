@@ -5,8 +5,10 @@ import org.bytedeco.ffmpeg.global.avutil;
 import org.bytedeco.javacv.*;
 import org.bytedeco.javacv.Frame;
 import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
+import org.jeecg.modules.demo.video.util.reture.retureBoxInfo;
 import org.jeecg.modules.tab.AIModel.NetPush;
 import org.opencv.core.Mat;
+import org.opencv.dnn.Net;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.springframework.data.redis.core.RedisTemplate;
 
@@ -35,6 +37,7 @@ import static org.jeecg.modules.tab.AIModel.AIModelYolo3.bufferedImageToMat;
 public class VideoReadPicNew implements Runnable {
 
     private static final ThreadLocal<TabAiSubscriptionNew> threadLocalPushInfo = new ThreadLocal<>();
+    private final ThreadLocal<Map<String, Net>> threadLocalNetCache = ThreadLocal.withInitial(HashMap::new);
     private final ThreadLocal<identifyTypeNew> identifyTypeNewLocal = ThreadLocal.withInitial(identifyTypeNew::new);
 
     private final ThreadLocal<Java2DFrameConverter> converterLocal = ThreadLocal.withInitial(Java2DFrameConverter::new);
@@ -52,7 +55,7 @@ public class VideoReadPicNew implements Runnable {
     private volatile long lastProcessTime = System.currentTimeMillis();
 
     // 关键修改3：实时帧率控制
-    private static final long TARGET_FRAME_INTERVAL = 800; // 500ms一帧(2fps)
+    private static final long TARGET_FRAME_INTERVAL = 1000; // 500ms一帧(2fps)
     private volatile long lastFrameTime = 0;
 
     // OpenCV DNN 优化 - 线程本地存储
@@ -75,10 +78,10 @@ public class VideoReadPicNew implements Runnable {
         this.streamId=tabAiSubscriptionNew.getId();
         // 创建专用线程池 - 支持强制终止
         this.processingExecutor = new ThreadPoolExecutor(
-                2, // 核心线程数减少
-                4, // 最大线程数减少
+                1, // 核心线程数减少
+                1, // 最大线程数减少
                 60L, TimeUnit.SECONDS,
-                new ArrayBlockingQueue<>(10), // 限制队列大小，防止积压
+                new ArrayBlockingQueue<>(5), // 限制队列大小，防止积压
                 r -> {
                     Thread t = new Thread(r, "VideoProcessor-" + tabAiSubscriptionNew.getName());
                     t.setDaemon(true); // 设置为守护线程
@@ -96,7 +99,7 @@ public class VideoReadPicNew implements Runnable {
         try {
             grabber = createOptimizedGrabber();
             identifyTypeNew identifyTypeAll = identifyTypeNewLocal.get();
-            List<NetPush> netPushList = tabAiSubscriptionNew.getNetPushList();
+            List<NetPush> netPushList = threadLocalPushInfo.get().getNetPushList();
 
             Frame frame;
             int consecutiveNullFrames = 0;
@@ -207,8 +210,8 @@ public class VideoReadPicNew implements Runnable {
                         break;
                     }
 
-                    // 检查单个推理超时(3秒)
-                    if (System.currentTimeMillis() - inferenceStart > 3000) {
+                    // 检查单个推理超时(10秒)
+                    if (System.currentTimeMillis() - inferenceStart > 10000) {
                         log.warn("[推理超时，跳过剩余处理]");
                         break;
                     }
@@ -227,7 +230,7 @@ public class VideoReadPicNew implements Runnable {
                 //setBeforeImg(matInfo,"cc");
                 // 性能警告
                 long totalTime = System.currentTimeMillis() - startTime;
-                if (totalTime > 2000) {
+                if (totalTime > 10000) {
                     log.warn("[帧处理耗时过长: {}ms] 可能导致延迟累积", totalTime);
                 }
 
@@ -285,7 +288,7 @@ public class VideoReadPicNew implements Runnable {
             if (netPush.getIsBefor() == 1) {
                 processWithPredecessorsOptimized(mat, netPush, identifyTypeAll);
             } else {
-                executeDetectionOptimized(mat, netPush, identifyTypeAll);
+                executeDetectionOptimized(mat, netPush, identifyTypeAll,null);
             }
 
         } catch (Exception e) {
@@ -303,7 +306,7 @@ public class VideoReadPicNew implements Runnable {
         return originalNet; // 临时返回原网络，需要根据实际情况修改
     }
 
-    private void executeDetectionOptimized(Mat mat, NetPush netPush, identifyTypeNew identifyTypeAll) {
+    private void executeDetectionOptimized(Mat mat, NetPush netPush, identifyTypeNew identifyTypeAll,List<retureBoxInfo> retureBoxInfos) {
         try {
             if (forceShutdown.get()) {
                 return;
@@ -313,9 +316,9 @@ public class VideoReadPicNew implements Runnable {
             long inferenceStart = System.currentTimeMillis();
 
             if ("1".equals(netPush.getModelType())) {
-                identifyTypeAll.detectObjectsDify(tabAiSubscriptionNew, mat, netPush, redisTemplate);
+                identifyTypeAll.detectObjectsDify(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
             } else {
-                identifyTypeAll.detectObjectsDifyV5(tabAiSubscriptionNew, mat, netPush, redisTemplate);
+                identifyTypeAll.detectObjectsDifyV5(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
             }
 
             long inferenceTime = System.currentTimeMillis() - inferenceStart;
@@ -333,7 +336,7 @@ public class VideoReadPicNew implements Runnable {
         if (before == null || before.isEmpty()) {
             return;
         }
-
+        retureBoxInfo validationPassed=null;
         for (int i = 0; i < before.size(); i++) {
             if (forceShutdown.get()) {
                 break;
@@ -342,20 +345,21 @@ public class VideoReadPicNew implements Runnable {
             NetPush beforePush = before.get(i);
 
             if (i == 0) {
-                boolean validationPassed = validateFirstModelOptimized(mat, beforePush, identifyTypeAll);
-                if (!validationPassed) {
+                validationPassed = validateFirstModelOptimized(mat, beforePush, identifyTypeAll);
+                if (validationPassed!=null&&!validationPassed.isFlag()) {
+                    log.warn("[第一个模型验证失败，终止后续处理]");
                     break;
                 }
             } else {
-                executeDetectionOptimized(mat, beforePush, identifyTypeAll);
+                executeDetectionOptimized(mat, beforePush, identifyTypeAll,validationPassed.getInfoList());
             }
         }
     }
 
-    private boolean validateFirstModelOptimized(Mat mat, NetPush beforePush, identifyTypeNew identifyTypeAll) {
+    private retureBoxInfo validateFirstModelOptimized(Mat mat, NetPush beforePush, identifyTypeNew identifyTypeAll) {
         try {
             if (forceShutdown.get()) {
-                return false;
+                return null;
             }
 
             if ("1".equals(beforePush.getModelType())) {
@@ -369,7 +373,7 @@ public class VideoReadPicNew implements Runnable {
             }
         } catch (Exception e) {
             log.error("[验证模型异常]", e);
-            return false;
+            return null;
         }
     }
 
@@ -509,6 +513,18 @@ public class VideoReadPicNew implements Runnable {
     }
 
     public FFmpegFrameGrabber createOptimizedGrabber() throws Exception {
+
+        // 第一步：先探测流信息
+        FFmpegFrameGrabber probe = new FFmpegFrameGrabber(tabAiSubscriptionNew.getBeginEventTypes());
+        probe.setOption("rtsp_transport", "tcp");
+        probe.setOption("stimeout", "5000000");
+        probe.start();
+        String codecName = probe.getVideoCodecName();
+        int codecId = probe.getVideoCodec();
+        probe.stop();
+        probe.close();
+        probe.release();
+        log.info(" 检测到视频编码: " + codecName + " (ID=" + codecId + ")");
         FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(tabAiSubscriptionNew.getBeginEventTypes());
 
         // GPU设置
@@ -522,7 +538,12 @@ public class VideoReadPicNew implements Runnable {
         }else if(tabAiSubscriptionNew.getEventTypes().equals("4")){
             //intel 加速
             grabber.setOption("hwaccel", "qsv");          // Intel QuickSync
-            grabber.setVideoCodecName("hevc_qsv");         // H.265 QSV
+           //grabber.setVideoCodecName("hevc_qsv");         // H.265 QSV
+            if ("h264".equalsIgnoreCase(codecName)) {
+                grabber.setVideoCodecName("h264_qsv");
+            } else if ("hevc".equalsIgnoreCase(codecName) || "hevc1".equalsIgnoreCase(codecName)) {
+                grabber.setVideoCodecName("hevc_qsv");
+            }
             log.info("[使用Intel加速解码]");
         }
         // 基础设置

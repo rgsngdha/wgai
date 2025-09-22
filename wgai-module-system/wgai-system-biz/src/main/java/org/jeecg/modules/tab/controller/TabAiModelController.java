@@ -1,13 +1,17 @@
 package org.jeecg.modules.tab.controller;
 
 import java.util.Arrays;
+import java.util.List;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import com.alibaba.fastjson.JSONObject;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.system.query.QueryGenerator;
+import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
+import org.jeecg.modules.demo.video.service.impl.TabAiSubscriptionNewServiceImpl;
 import org.jeecg.modules.tab.entity.TabAiModel;
+import org.jeecg.modules.tab.entity.indexModel;
 import org.jeecg.modules.tab.service.ITabAiModelService;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -36,31 +40,50 @@ import org.jeecg.common.aspect.annotation.AutoLog;
 @RequestMapping("/tab/tabAiModel")
 @Slf4j
 public class TabAiModelController extends JeecgController<TabAiModel, ITabAiModelService> {
-	@Autowired
-	private ITabAiModelService tabAiModelService;
-	
-	/**
-	 * 分页列表查询
-	 *
-	 * @param tabAiModel
-	 * @param pageNo
-	 * @param pageSize
-	 * @param req
-	 * @return
-	 */
-	//@AutoLog(value = "AI模型-分页列表查询")
-	@ApiOperation(value="AI模型-分页列表查询", notes="AI模型-分页列表查询")
-	@GetMapping(value = "/list")
-	public Result<IPage<TabAiModel>> queryPageList(TabAiModel tabAiModel,
-								   @RequestParam(name="pageNo", defaultValue="1") Integer pageNo,
-								   @RequestParam(name="pageSize", defaultValue="10") Integer pageSize,
-								   HttpServletRequest req) {
-		QueryWrapper<TabAiModel> queryWrapper = QueryGenerator.initQueryWrapper(tabAiModel, req.getParameterMap());
-		Page<TabAiModel> page = new Page<TabAiModel>(pageNo, pageSize);
-		IPage<TabAiModel> pageList = tabAiModelService.page(page, queryWrapper);
-		return Result.OK(pageList);
-	}
+	 @Autowired
+	 private ITabAiModelService tabAiModelService;
 
+	 /**
+	  * 分页列表查询
+	  *
+	  * @param tabAiModel
+	  * @param pageNo
+	  * @param pageSize
+	  * @param req
+	  * @return
+	  */
+	 //@AutoLog(value = "AI模型-分页列表查询")
+	 @ApiOperation(value = "AI模型-分页列表查询", notes = "AI模型-分页列表查询")
+	 @GetMapping(value = "/list")
+	 public Result<IPage<TabAiModel>> queryPageList(TabAiModel tabAiModel,
+													@RequestParam(name = "pageNo", defaultValue = "1") Integer pageNo,
+													@RequestParam(name = "pageSize", defaultValue = "10") Integer pageSize,
+													HttpServletRequest req) {
+		 QueryWrapper<TabAiModel> queryWrapper = QueryGenerator.initQueryWrapper(tabAiModel, req.getParameterMap());
+		 Page<TabAiModel> page = new Page<TabAiModel>(pageNo, pageSize);
+		 IPage<TabAiModel> pageList = tabAiModelService.page(page, queryWrapper);
+		 return Result.OK(pageList);
+	 }
+
+
+
+	@Autowired
+	TabAiSubscriptionNewServiceImpl tabAiSubscriptionNewService;
+
+	 @ApiOperation(value = "首页AI模型数量/摄像头数量/识别率", notes = "首页AI模型数量/摄像头数量/识别率")
+	 @GetMapping(value = "/getIndexInfo")
+	 public Result<indexModel> getIndexInfo(){
+		 indexModel indexModel=new indexModel();
+
+		 List<TabAiModel>  modelNumber=tabAiModelService.list();
+		 List<TabAiSubscriptionNew>  cameraNumber=tabAiSubscriptionNewService.list();
+
+		 indexModel.setModelNmber(modelNumber.size());
+		 indexModel.setCameraNumber(cameraNumber.size());
+
+		 indexModel.setTabAiModel(modelNumber);
+		 return Result.OK(indexModel);
+	 }
 	 @ApiOperation(value="AI模型-下发", notes="AI模型-下发")
 	 @PostMapping(value = "/nextModel")
 	 public Result<?> nextModel(@RequestBody TabAiModel tabAiModel ,HttpServletRequest req) {

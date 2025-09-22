@@ -22,4 +22,8 @@ public class picXml {
     public String modelId;
 
     public String picId;
+
+    public Integer isMark;
+
+    public String aiModel;
 }

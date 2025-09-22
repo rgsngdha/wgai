@@ -36,6 +36,7 @@ import org.opencv.dnn.Net;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
+import org.opencv.objdetect.HOGDescriptor;
 import org.opencv.utils.Converters;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.VideoWriter;
@@ -460,87 +461,113 @@ public class AIModelYolo3 {
     }
     public static void main(String[] args) throws Exception {
         System.load("F:\\JAVAAI\\opencv481\\opencv\\build\\java\\x64\\opencv_java481.dll");
-        // 读取图像
-        Mat src = Imgcodecs.imread("F:\\home\\1740119768303.png");
-//
-//        String starstr=imageStr("1740110094401.jpg","F:\\home");
-//        System.out.println("starstr"+starstr);
-        // 转换为灰度图像
-        // 1. 图像预处理：灰度化、二值化
-        // 1. 图像预处理：灰度化、二值化
-        Mat gray = new Mat();
-        Imgproc.cvtColor(src, gray, Imgproc.COLOR_BGR2GRAY);
+// 读取图片
+        Mat img = Imgcodecs.imread("F:\\logs\\e09875acd34dc8540d67396b890b327.png");
 
-        Mat binary = new Mat();
-        Imgproc.threshold(gray, binary, 0, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
+        // 初始化 HOGDescriptor
+        HOGDescriptor hog = new HOGDescriptor();
+        hog.setSVMDetector(HOGDescriptor.getDefaultPeopleDetector());
 
-        // 2. 放大图像减少极坐标转换中的锯齿
-        Mat enlargedImage = new Mat();
-        Imgproc.resize(binary, enlargedImage, new Size(binary.cols() * 2, binary.rows() * 2), 0, 0, Imgproc.INTER_CUBIC);
+        // 检测
+        MatOfRect foundLocations = new MatOfRect();
+        MatOfDouble foundWeights = new MatOfDouble();
+        hog.detectMultiScale(img, foundLocations, foundWeights);
 
-        // 3. 添加字符间的空白（膨胀操作）
-        Mat dilatedImage = new Mat();
-        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(1, 1));  // 使用一个2x2的矩阵作为膨胀核
-        Imgproc.dilate(enlargedImage, dilatedImage, kernel);
-
-        // 4. 检测轮廓
-        List<MatOfPoint> contours = new ArrayList<>();
-        Mat hierarchy = new Mat();
-        Imgproc.findContours(dilatedImage, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
-
-        // 5. 使用 RotatedRect 检测弧形文字区域
-        for (MatOfPoint contour : contours) {
-            RotatedRect rotatedRect = Imgproc.minAreaRect(new MatOfPoint2f(contour.toArray()));
-
-            // 获取旋转矩形的角点坐标
-            Point[] vertices = new Point[4];
-            rotatedRect.points(vertices);
-
-            // 在原图上绘制矩形
-            for (int j = 0; j < 4; j++) {
-                Imgproc.line(src, vertices[j], vertices[(j + 1) % 4], new Scalar(0, 255, 0), 2);
+        // 判断是否有人
+        Rect[] detections = foundLocations.toArray();
+        if (detections.length > 0) {
+            System.out.println("✅ 检测到 " + detections.length + " 人");
+            // 画框
+            for (Rect r : detections) {
+                Imgproc.rectangle(img, r, new Scalar(0, 255, 0), 2);
             }
-
-            // 6. 极坐标变换矫正弧形文字（使用更高阶的插值方法）
-            Mat polarImg = new Mat();
-            Point center = rotatedRect.center;  // 弧形文字的中心
-            double maxRadius = rotatedRect.size.height / 2.0; // 以高度为半径
-            Imgproc.linearPolar(dilatedImage, polarImg, center, maxRadius, Imgproc.INTER_CUBIC + Imgproc.WARP_FILL_OUTLIERS);
-
-            // 7. 锐化极坐标变换后的图像
-            Mat sharpenKernel = new Mat(3, 3, CvType.CV_32F);
-            float[] kernelData = {
-                    0, -1, 0,
-                    -1, 5, -1,
-                    0, -1, 0
-            };
-            sharpenKernel.put(0, 0, kernelData);
-
-            Mat sharpenedImage = new Mat();
-            Imgproc.filter2D(polarImg, sharpenedImage, -1, sharpenKernel);
-
-//            // 8. 细化字体边缘（腐蚀操作）
-//            Mat erodedImage = new Mat();
-//            Mat erosionKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(1, 1));  // 细化字体边缘
-//            Imgproc.erode(sharpenedImage, erodedImage, erosionKernel);
-
-            // 保存锐化和放大后的图像
-            String outputPolarImagePath = "F:\\home\\path_to_output_polar_image.jpg";
-            Imgcodecs.imwrite(outputPolarImagePath, sharpenedImage);
-
-            System.out.println("极坐标变换后的清晰图像已保存: " + outputPolarImagePath);
-
-            // 后续可以将 polarImg 图像传递给 OCR 工具进行识别
-            // 使用如 RapidOCR 等工具来识别展开的直线文字
+            Imgcodecs.imwrite("F:\\logs\\result.jpg", img);
+        } else {
+            System.out.println("❌ 没有人");
         }
 
-        // 保存标注了旋转矩形的原图像
-        String outputImagePath = "F:\\home\\orrected_image.jpg";
-        Imgcodecs.imwrite(outputImagePath, src);
-        // 保存结果
+
+        // 读取图像
+//        Mat src = Imgcodecs.imread("F:\\home\\1740119768303.png");
+////
+////        String starstr=imageStr("1740110094401.jpg","F:\\home");
+////        System.out.println("starstr"+starstr);
+//        // 转换为灰度图像
+//        // 1. 图像预处理：灰度化、二值化
+//        // 1. 图像预处理：灰度化、二值化
+//        Mat gray = new Mat();
+//        Imgproc.cvtColor(src, gray, Imgproc.COLOR_BGR2GRAY);
 //
-        String endstr=imageStr("path_to_output_polar_image.jpg","F:\\home");
-        System.out.println("endstr"+endstr);
+//        Mat binary = new Mat();
+//        Imgproc.threshold(gray, binary, 0, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
+//
+//        // 2. 放大图像减少极坐标转换中的锯齿
+//        Mat enlargedImage = new Mat();
+//        Imgproc.resize(binary, enlargedImage, new Size(binary.cols() * 2, binary.rows() * 2), 0, 0, Imgproc.INTER_CUBIC);
+//
+//        // 3. 添加字符间的空白（膨胀操作）
+//        Mat dilatedImage = new Mat();
+//        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(1, 1));  // 使用一个2x2的矩阵作为膨胀核
+//        Imgproc.dilate(enlargedImage, dilatedImage, kernel);
+//
+//        // 4. 检测轮廓
+//        List<MatOfPoint> contours = new ArrayList<>();
+//        Mat hierarchy = new Mat();
+//        Imgproc.findContours(dilatedImage, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+//
+//        // 5. 使用 RotatedRect 检测弧形文字区域
+//        for (MatOfPoint contour : contours) {
+//            RotatedRect rotatedRect = Imgproc.minAreaRect(new MatOfPoint2f(contour.toArray()));
+//
+//            // 获取旋转矩形的角点坐标
+//            Point[] vertices = new Point[4];
+//            rotatedRect.points(vertices);
+//
+//            // 在原图上绘制矩形
+//            for (int j = 0; j < 4; j++) {
+//                Imgproc.line(src, vertices[j], vertices[(j + 1) % 4], new Scalar(0, 255, 0), 2);
+//            }
+//
+//            // 6. 极坐标变换矫正弧形文字（使用更高阶的插值方法）
+//            Mat polarImg = new Mat();
+//            Point center = rotatedRect.center;  // 弧形文字的中心
+//            double maxRadius = rotatedRect.size.height / 2.0; // 以高度为半径
+//            Imgproc.linearPolar(dilatedImage, polarImg, center, maxRadius, Imgproc.INTER_CUBIC + Imgproc.WARP_FILL_OUTLIERS);
+//
+//            // 7. 锐化极坐标变换后的图像
+//            Mat sharpenKernel = new Mat(3, 3, CvType.CV_32F);
+//            float[] kernelData = {
+//                    0, -1, 0,
+//                    -1, 5, -1,
+//                    0, -1, 0
+//            };
+//            sharpenKernel.put(0, 0, kernelData);
+//
+//            Mat sharpenedImage = new Mat();
+//            Imgproc.filter2D(polarImg, sharpenedImage, -1, sharpenKernel);
+//
+////            // 8. 细化字体边缘（腐蚀操作）
+////            Mat erodedImage = new Mat();
+////            Mat erosionKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(1, 1));  // 细化字体边缘
+////            Imgproc.erode(sharpenedImage, erodedImage, erosionKernel);
+//
+//            // 保存锐化和放大后的图像
+//            String outputPolarImagePath = "F:\\home\\path_to_output_polar_image.jpg";
+//            Imgcodecs.imwrite(outputPolarImagePath, sharpenedImage);
+//
+//            System.out.println("极坐标变换后的清晰图像已保存: " + outputPolarImagePath);
+//
+//            // 后续可以将 polarImg 图像传递给 OCR 工具进行识别
+//            // 使用如 RapidOCR 等工具来识别展开的直线文字
+//        }
+//
+//        // 保存标注了旋转矩形的原图像
+//        String outputImagePath = "F:\\home\\orrected_image.jpg";
+//        Imgcodecs.imwrite(outputImagePath, src);
+//        // 保存结果
+////
+//        String endstr=imageStr("path_to_output_polar_image.jpg","F:\\home");
+//        System.out.println("endstr"+endstr);
 
 
 

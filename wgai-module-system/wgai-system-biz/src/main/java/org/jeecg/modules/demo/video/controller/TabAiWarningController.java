@@ -12,6 +12,7 @@ import javax.servlet.http.HttpServletResponse;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.system.query.QueryGenerator;
 import org.jeecg.common.util.oConvertUtils;
+import org.jeecg.modules.demo.tab.entity.PushInfo;
 import org.jeecg.modules.demo.video.entity.TabAiWarning;
 import org.jeecg.modules.demo.video.service.ITabAiWarningService;
 
@@ -86,6 +87,19 @@ public class TabAiWarningController extends JeecgController<TabAiWarning, ITabAi
 		tabAiWarningService.save(tabAiWarning);
 		return Result.OK("添加成功！");
 	}
+
+
+	 @AutoLog(value = "报警信息-添加")
+	 @ApiOperation(value="报警信息-添加", notes="报警信息-添加")
+	 //@RequiresPermissions("org.jeecg.modules.demo:tab_ai_warning:add")
+	 @PostMapping(value = "/addPush")
+	 public Result<String> addPush(@RequestBody PushInfo pushInfo) {
+		 TabAiWarning tabAiWarning=new TabAiWarning();
+		 tabAiWarning.setWarningName(pushInfo.getName());
+	//	 tabAiWarning.setw
+		 tabAiWarningService.save(tabAiWarning);
+		 return Result.OK("添加成功！");
+	 }
 	
 	/**
 	 *  编辑
