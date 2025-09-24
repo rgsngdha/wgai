@@ -1,6 +1,7 @@
 package org.jeecg.modules.demo.video.controller;
 
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -21,6 +22,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 
+import org.jeecg.modules.tab.entity.pushEntity;
 import org.jeecgframework.poi.excel.ExcelImportUtil;
 import org.jeecgframework.poi.excel.def.NormalExcelConstants;
 import org.jeecgframework.poi.excel.entity.ExportParams;
@@ -93,9 +95,17 @@ public class TabAiWarningController extends JeecgController<TabAiWarning, ITabAi
 	 @ApiOperation(value="报警信息-添加", notes="报警信息-添加")
 	 //@RequiresPermissions("org.jeecg.modules.demo:tab_ai_warning:add")
 	 @PostMapping(value = "/addPush")
-	 public Result<String> addPush(@RequestBody PushInfo pushInfo) {
+	 public Result<String> addPush(@RequestBody pushEntity pushInfo) {
 		 TabAiWarning tabAiWarning=new TabAiWarning();
-		 tabAiWarning.setWarningName(pushInfo.getName());
+		 tabAiWarning.setWarningName(pushInfo.getCameraName());
+		 tabAiWarning.setWarningType("识别报警");
+		 tabAiWarning.setWarningInfo(pushInfo.getModelName());
+		 tabAiWarning.setWaringText(pushInfo.getModelText());
+		 tabAiWarning.setWarningTime(new Date());
+		 tabAiWarning.setWarningPic(pushInfo.getAlarmPicData());
+		 tabAiWarning.setWarningCome(pushInfo.getVideo());
+		 tabAiWarning.setWaringAi("图像识别算法");
+		 tabAiWarning.setWaringState("未处理");
 	//	 tabAiWarning.setw
 		 tabAiWarningService.save(tabAiWarning);
 		 return Result.OK("添加成功！");

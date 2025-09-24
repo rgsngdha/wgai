@@ -58,6 +58,8 @@ public class TabModelTry implements Serializable {
     @ApiModelProperty(value = "模型名称")
     private java.lang.String modelName;
 	/**模型类型*/
+
+    @Dict(dicCode = "model_type")
 	@Excel(name = "模型类型", width = 15)
     @ApiModelProperty(value = "模型类型")
     private java.lang.String modelType;

@@ -63,7 +63,7 @@ public class TabAiWarning implements Serializable {
 	/**预警类型*/
 	@Excel(name = "预警类型", width = 15)
     @ApiModelProperty(value = "预警类型")
-    private java.lang.Integer warningType;
+    private java.lang.String warningType;
 	/**预警内容*/
 	@Excel(name = "预警内容", width = 15)
     @ApiModelProperty(value = "预警内容")

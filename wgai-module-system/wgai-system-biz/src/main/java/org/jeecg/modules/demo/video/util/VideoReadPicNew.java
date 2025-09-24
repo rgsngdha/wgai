@@ -555,7 +555,6 @@ public class VideoReadPicNew implements Runnable {
         grabber.setPixelFormat(avutil.AV_PIX_FMT_BGR24);
 
         // 实时流优化
-        grabber.setOption("fflags", "nobuffer+flush_packets");
         grabber.setOption("flags", "low_delay");
         grabber.setOption("max_delay", "500000");
         grabber.setOption("buffer_size", "512000"); // 减小缓冲区

@@ -221,6 +221,26 @@ public class TabModelTryController extends JeecgController<TabModelTry, ITabMode
 		tabModelTryService.removeById(id);
 		return Result.OK("删除成功!");
 	}
+
+
+	 /**
+	  *  批量恢复
+	  *
+	  * @param ids
+	  * @return
+	  */
+	 @AutoLog(value = "模型预训练-批量恢复")
+	 @ApiOperation(value="模型预训练-批量恢复", notes="模型预训练-批量恢复")
+	 //@RequiresPermissions("org.jeecg.modules.demo:tab_model_try:deleteBatch")
+	 @GetMapping(value = "/getBatchPic")
+	 public Result<String> getBatchPic(@RequestParam(name="ids",required=true) String ids) {
+		 List<String> info=Arrays.asList(ids.split(","));
+		 QueryWrapper<TabModelTry> queryWrapper=new QueryWrapper<>();
+		 queryWrapper.in("id",info);
+		 List<TabModelTry> list=this.tabModelTryService.list(queryWrapper);
+
+		 return  tabModelTryService.getBatchPic(list);
+	 }
 	
 	/**
 	 *  批量删除

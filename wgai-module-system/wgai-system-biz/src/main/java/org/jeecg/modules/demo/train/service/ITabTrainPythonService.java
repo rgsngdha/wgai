@@ -12,4 +12,6 @@ import com.baomidou.mybatisplus.extension.service.IService;
  */
 public interface ITabTrainPythonService extends IService<TabTrainPython> {
     Result<String>  startPy(String id,String sort);
+
+    Result<String>  startPyV11(String id,String sort);
 }

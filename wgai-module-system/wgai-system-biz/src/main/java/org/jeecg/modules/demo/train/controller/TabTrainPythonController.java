@@ -101,7 +101,13 @@ public class TabTrainPythonController extends JeecgController<TabTrainPython, IT
 	 //@RequiresPermissions("org.jeecg.modules.demo:tab_train_python:add")
 	 @GetMapping(value = "/startPy")
 	 public Result<String> add(@RequestParam(name="id",required=true) String id) {
-		 tabTrainPythonService.startPy(id,null);
+		 TabModelTry tabModelTry=tabModelTryService.getById(id);
+		 if(tabModelTry.getModelType()=="2"){//v5 v8
+			 tabTrainPythonService.startPy(id,null);
+		 }else if(tabModelTry.getModelType()=="11"){ //v11
+			 tabTrainPythonService.startPyV11(id,null);
+		 }
+
 		 return Result.OK("添加成功！");
 	 }
 	 @Autowired

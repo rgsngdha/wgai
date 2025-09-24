@@ -648,9 +648,17 @@ public class identifyTypeNew {
             }
         }
         boolean flag;
-        if (confidences.size() <= 0||confidences.size()>100) {
+        String savepath = uploadpath + File.separator + "push" + File.separator;
+        if (confidences.size() <= 0||confidences.size()>200) {
             log.warn(pushInfo.getName() + ":当前未检测到内容：{}-{}",netPush.getTabAiModel().getAiName(),confidences.size());
             //setBeforeImg(image,"end");
+
+            if(netPush.getWarinngMethod()==1){//0 是识别到报警  1 是未识别到报警
+                log.info("[未识别到推送数据]:{}",netPush.getIsFollow());
+                String   saveName = savepath + System.currentTimeMillis() + ".jpg";
+                Imgcodecs.imwrite(saveName, image);
+                isOk(pushInfo,netPush,redisTemplate,saveName,tabAiModel,netPush.getNoDifText(),1,netPush.getNoDifText(),netPush.getNoDifText(),savepath);
+            }
             return false;
         }
         // 执行非最大抑制，消除重复的边界框
@@ -666,6 +674,7 @@ public class identifyTypeNew {
         }
 
         int[] indicesArray = indices.toArray();
+
         // 获取保留的边界框
         if(indicesArray.length>50){
 
@@ -736,8 +745,8 @@ public class identifyTypeNew {
 
             audioText += aiBase.getRemark() + aiBase.getSpaceOne();
             warnNumber += aiBase.getSpaceTwo() == null ? 1 : aiBase.getSpaceTwo();
-            warnText += StringUtils.isEmpty(aiBase.getRemark()) == true ? "" : aiBase.getRemark();
-            warnName += aiBase.getChainName() + ",";
+            warnText = setNmsName(warnText,StringUtils.isEmpty(aiBase.getRemark()) == true ? aiBase.getChainName() : aiBase.getRemark());
+            warnName = setNmsName(warnName,aiBase.getChainName());
             // Imgproc.rectangle(image, new Point(box.x, box.y), new Point(box.x + box.width, box.y + box.height),CommonColors(c), 2);
             Imgproc.rectangle(image,
                     new Point(xzb, yzb),
@@ -755,7 +764,7 @@ public class identifyTypeNew {
             return false;
         }
 
-        String savepath = uploadpath + File.separator + "push" + File.separator;
+
         File file = new File(savepath);
         if (!file.exists()) {
             file.mkdirs();
@@ -824,9 +833,30 @@ public class identifyTypeNew {
         return px >= x && px <= x2 && py >= y && py <= y2;
     }
 
+
+    public String setNmsName(String WareText,String name){
+
+        if (WareText == null || WareText.isEmpty()) {
+            // WareText为空时，直接返回name
+            return name;
+        }
+        log.info("[当前内容{}:替换内容{}]",WareText,name);
+        if (WareText.contains(name)) {
+        // 已经包含，不拼接
+            return WareText;
+        }
+        return WareText + "," + name;
+
+    }
+
     public void setErrorImg(Mat image,String txt){
         String saveName="D://error";
         try {
+            log.info("错误存储地址{}", saveName);
+            File imageFile = new File(saveName);
+            if (!imageFile.exists()) {
+                imageFile.mkdirs();
+            }
             long count = Files.list(Paths.get(saveName)).filter(Files::isRegularFile).count();
             if(count>10000){
                 log.info("错误文件大于5000不再存储 以免磁盘满");
@@ -849,11 +879,7 @@ public class identifyTypeNew {
                 }).start();
                 return;
             }
-            log.info("错误存储地址{}", saveName);
-            File imageFile = new File(saveName);
-            if (!imageFile.exists()) {
-                imageFile.mkdirs();
-            }
+
             Imgcodecs.imwrite(saveName+"/"+txt+System.currentTimeMillis()+".jpg", image);
         }catch (Exception exception){
             exception.printStackTrace();
@@ -863,6 +889,11 @@ public class identifyTypeNew {
     public static void setTestImg(Mat image,String txt){
         String saveName="D://error/test";
         try {
+            log.info("错误存储地址{}", saveName);
+            File imageFile = new File(saveName);
+            if (!imageFile.exists()) {
+                imageFile.mkdirs();
+            }
             long count = Files.list(Paths.get(saveName)).filter(Files::isRegularFile).count();
             if(count>10000){
                 log.info("错误文件大于5000不再存储 以免磁盘满");
@@ -885,11 +916,7 @@ public class identifyTypeNew {
                 }).start();
                 return;
             }
-            log.info("错误存储地址{}", saveName);
-            File imageFile = new File(saveName);
-            if (!imageFile.exists()) {
-                imageFile.mkdirs();
-            }
+
             Imgcodecs.imwrite(saveName+"/"+txt+System.currentTimeMillis()+".jpg", image);
         }catch (Exception exception){
             exception.printStackTrace();
@@ -899,6 +926,11 @@ public class identifyTypeNew {
     public void setBeforeImg(Mat image,String txt){
         String saveName="D://error//"+txt;
         try {
+            log.info("错误存储地址{}", saveName);
+            File imageFile = new File(saveName);
+            if (!imageFile.exists()) {
+                imageFile.mkdirs();
+            }
             long count = Files.list(Paths.get(saveName)).filter(Files::isRegularFile).count();
             if(count>10000){
                 log.info("不通过前置图片文件大于10000不再存储 以免磁盘满");
@@ -921,11 +953,7 @@ public class identifyTypeNew {
                 }).start();
                 return;
             }
-            log.info("错误存储地址{}", saveName);
-            File imageFile = new File(saveName);
-            if (!imageFile.exists()) {
-                imageFile.mkdirs();
-            }
+
             SimpleDateFormat simpleDateFormat=new SimpleDateFormat("yyyyMMddHHmmss");
             Random random = new Random();
             int number = 10000 + random.nextInt(90000); // 10000 ~ 99999
@@ -981,52 +1009,54 @@ public class identifyTypeNew {
 
 
                 String recordVideo = "";
-                if (pushInfo.getPushStatic() == 0) {// 0 开启 1未开启
-
-                    log.info("[推送第三方结果]：");
-                    //是否录像
-                    if (pushInfo.getIsRecording() == 0) {
-
-                        log.info("开启录像 录像时常{}", pushInfo.getRecordTime());
-                        long recordTime = pushInfo.getRecordTime();
-                        recordVideo = RecordVideo(pushInfo.getBeginEventTypes(), savePath, recordTime, netPush.getId());
-                        if (StringUtils.isNotEmpty(recordVideo)) {
-                            log.error("录像完成:{}", recordVideo);
-                            if (pushInfo.getIsBegin() == 0) {
-                                //需要分析录像视频逐帧分析
-                                log.error("开始分析视频");
-                                recordVideo = analysisVideo(recordVideo, netPush, savePath);
-                            }
-                            String base64Mp4 = base64Image(recordVideo);
-                            push.setVideo(base64Mp4);
-                        }
-
-                    } else {
-                        log.info("未开启录像");
-                    }
-                    if(!pushInfo.getEventUrl().equals("localhost")){ //不进行推送
-                        JSONObject ob = RestUtil.post(pushInfo.getEventUrl(), (JSONObject) JSONObject.toJSON(push));
-                        log.info("返回内容：" + ob);
-
-                    }
-
-                    if(pushInfo.getSaveLocalhost()==0){ //保存到本地
-                        log.info("本地也保存");
-
-                        // 获取 pushInfo 的路径部分
-                        JSONObject ob = RestUtil.post("http://127.0.0.1:9998/wgai/video/tabAiWarning/addPush", (JSONObject) JSONObject.toJSON(push));
-                        log.info("返回内容：" + ob);
-                    }
-                    if (pushInfo.getSaveRecord() != 0 && StringUtils.isNotEmpty(recordVideo)) {  //不保存
-                        File imageFile = new File(recordVideo);
-                        if (imageFile.exists()) {
-                            imageFile.delete();
+                //是否录像
+                if (pushInfo.getIsRecording() == 0) {
+                    log.info("开启录像 录像时常{}", pushInfo.getRecordTime());
+                    long recordTime = pushInfo.getRecordTime();
+                    recordVideo = RecordVideo(pushInfo.getBeginEventTypes(), savePath, recordTime, netPush.getId());
+                    if (StringUtils.isNotEmpty(recordVideo)) {
+                        log.error("录像完成:{}", recordVideo);
+                        if (pushInfo.getIsBegin() == 0) {
+                            //需要分析录像视频逐帧分析
+                            log.error("开始分析视频");
+                            recordVideo = analysisVideo(recordVideo, netPush, savePath);
                         }
                     }
                 } else {
-                    log.info("不推送第三方结果：");
+                    log.info("[未开启录像]");
                 }
 
+                if (pushInfo.getPushStatic() == 0) {// 0 开启 1未开启
+                    log.info("[推送第三方结果]：");
+                    if(!pushInfo.getEventUrl().equals("localhost")){ //不进行推送
+                        if(StringUtils.isNotEmpty(recordVideo)){
+                            String base64Mp4 = base64Image(recordVideo);
+                            push.setVideo(base64Mp4);
+                        }
+                        JSONObject ob = RestUtil.post(pushInfo.getEventUrl(), (JSONObject) JSONObject.toJSON(push));
+                        log.info("返回内容：" + ob);
+                    }
+                } else {
+                    log.info("[当前设置为：不推送第三方]");
+                }
+
+                if(pushInfo.getSaveLocalhost()==0){ //保存到本地
+                    log.info("[本地也保存]");
+                    push.setAlarmPicData(saveName);
+                    push.setVideo(recordVideo);
+                    // 获取 pushInfo 的路径部分
+
+                    JSONObject ob = RestUtil.post("http://127.0.0.1:9998/jeecg-boot/video/tabAiWarning/addPush", (JSONObject) JSONObject.toJSON(push));
+
+                    log.info("返回内容：" + ob);
+                }
+
+                if (pushInfo.getSaveRecord() != 0 && StringUtils.isNotEmpty(recordVideo)) {  //不保存本地录像
+                    File imageFile = new File(recordVideo);
+                    if (imageFile.exists()) {
+                        imageFile.delete();
+                    }
+                }
 
 
             } catch (Exception exception) {

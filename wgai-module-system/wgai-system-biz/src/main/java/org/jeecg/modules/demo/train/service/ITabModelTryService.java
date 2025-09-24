@@ -25,4 +25,7 @@ public interface ITabModelTryService extends IService<TabModelTry> {
     public Result<String> autoSaveMake(List<TabEasyPic> tabEasyPic, TabAiModel tabAiModel);
     //更新标记图片数量
     public Result<String> saveMakeNum();
+
+
+    public Result<String>  getBatchPic(List<TabModelTry> tabModelTry);
 }

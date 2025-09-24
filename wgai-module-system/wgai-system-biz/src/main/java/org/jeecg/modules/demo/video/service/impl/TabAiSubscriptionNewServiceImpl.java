@@ -21,7 +21,6 @@ import org.jeecg.modules.demo.video.util.*;
 import org.jeecg.modules.tab.AIModel.NetPush;
 import org.jeecg.modules.tab.entity.TabAiModel;
 import org.jeecg.modules.tab.mapper.TabAiModelMapper;
-import org.opencv.core.Mat;
 import org.opencv.dnn.Dnn;
 import org.opencv.dnn.Net;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +30,6 @@ import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 
-import javax.annotation.PostConstruct;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -40,6 +38,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -73,6 +73,8 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
     @Value("${jeecg.path.upload}")
     private String upLoadPath;
 
+    @Value("${cameraNum}")
+    private Integer cameraNum;
     @Override
     public void startAi(TabAiSubscriptionNew tabAiSubscriptionNew)  {
         try {
@@ -138,8 +140,9 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
                         allPush.setModelType(tabAiModel.getSpareOne());
                         allPush.setUploadPath(upLoadPath);
                         allPush.setIsBefor(0);
+                        allPush.setIsFollow(tabAiVideoSetting.getIsFollow()==null?1:tabAiVideoSetting.getIsFollow());
                         allPush.setWarinngMethod(tabAiVideoSetting.getWarinngMethod()==null?0:tabAiVideoSetting.getWarinngMethod());
-                        allPush.setNoDifText(StringUtils.isEmpty(tabAiVideoSetting.getNoDifText())==true?"":tabAiVideoSetting.getNoDifText());
+                        allPush.setNoDifText(StringUtils.isEmpty(tabAiVideoSetting.getNoDifText())==true?"未定义":tabAiVideoSetting.getNoDifText());
 
                     }
 
@@ -166,13 +169,27 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
             tabAiSubscriptionNew.setNetPushList(NetPushList);
             tabAiSubscriptionNew.setListSetting(tabAiVideoSettingList);
 
-            log.info("[当前开始执行推理]{}",tabAiSubscriptionNew.getName());
+            log.info("[当前开始执行推理]{}-共{}路视频",tabAiSubscriptionNew.getName(),cameraNum);
             //开始取流
             ExecutorService executor = Executors.newFixedThreadPool(32);
                     //Executors.newCachedThreadPool(4);
 
             //判断取流方式
-            executor.submit(new VideoReadPicNew(tabAiSubscriptionNew,redisTemplate));
+           //
+            if(cameraNum==null||cameraNum<32){
+                log.info("[小于32路直接启动]");
+                executor.submit(new VideoReadPicNew(tabAiSubscriptionNew,redisTemplate));
+            }else{
+                log.info("[大于32路视频 -30s间隔启动]");
+                Timer timer = new Timer();
+                timer.schedule(new TimerTask() {
+                    public void run() {
+                        executor.submit(new VideoReadPicNewThreeTwo(tabAiSubscriptionNew, redisTemplate));
+
+                    }
+                },  30000); // 30秒间隔
+            }
+
           //  executor.submit(new VideoReadPicNewOptimized(tabAiSubscriptionNew,redisTemplate));
 
 

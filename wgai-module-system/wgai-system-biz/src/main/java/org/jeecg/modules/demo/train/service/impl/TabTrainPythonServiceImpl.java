@@ -85,6 +85,7 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
         if(StringUtils.isNotEmpty(sort)){
             queryWrapper.eq("py_sort",Integer.parseInt(sort));
         }
+        queryWrapper.eq("py_type","1"); //v5脚本
         queryWrapper.orderByAsc("py_sort");
         List<TabTrainPython> list=this.list(queryWrapper);
         TabTrainPython tabTrainPython7=new TabTrainPython();
@@ -132,6 +133,80 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
         }
 
         //配置文件配置完成开始训练 //丢给子线程去执行
+            if(StringUtils.isNotEmpty(tabTrainPython7.getPyPath())) {
+
+                yolov5Path=tabTrainPython7.getPyPath();
+                //开始执行训练
+                startTrain(tabTrainPython7,id);
+            }else{
+                return Result.error("执行失败");
+            }
+        }catch (Exception ex){
+            ex.printStackTrace();
+            return Result.error("执行失败");
+        }
+        return Result.ok("正在执行训练");
+    }
+
+    @Override
+    public Result<String> startPyV11(String id, String sort) {
+        try {
+            if(!checkRunModel( id)){
+                log.info("【当前模型任务正在训练中不可重复训练】");
+                return Result.error("任务在训练中不可重复训练");
+            }
+            QueryWrapper<TabTrainPython> queryWrapper=new QueryWrapper<>();
+            if(StringUtils.isNotEmpty(sort)){
+                queryWrapper.eq("py_sort",Integer.parseInt(sort));
+            }
+            queryWrapper.eq("py_type","11"); //v11脚本
+            queryWrapper.orderByAsc("py_sort");
+            List<TabTrainPython> list=this.list(queryWrapper);
+            TabTrainPython tabTrainPython7=new TabTrainPython();
+            for (TabTrainPython tabTrainPython:list){
+                switch (tabTrainPython.getPySort()){
+                    case 1:
+                        //执行创建文件夹脚本
+                        createFolderStructure(tabTrainPython.getPyPath());
+                        //将标注好的xml 图片放到指定 文件夹
+                        QueryWrapper<TabEasyPic> queryWrapperPc=new QueryWrapper<>();
+                        queryWrapperPc.eq("model_id",id);
+                        List<TabEasyPic> tabEasyPicList=tabEasyPicService.list(queryWrapperPc);
+                        copyFile(tabEasyPicList, tabTrainPython);
+                        break;
+                    case 2:
+                        // 训练、验证和测试集，并生成相应的txt
+                        sendTxt(tabTrainPython.getPyPath());
+                        break;
+                    case 3:
+                        // xml转中心坐标点并生成数据源
+                        sendLable(tabTrainPython, tabModelTryService.getById(id));
+                        break;
+                    case 4:
+                        //生成coco配置文件
+                        sendCocoYaml( tabTrainPython,tabModelTryService.getById(id));
+                        break;
+                    case 5:
+                        //修改原版 80 的nc 根据实际情况修改 nc
+                        sendYolov5s( tabTrainPython,tabModelTryService.getById(id));
+                        break;
+                    case 6:
+                        //修改训练配置文件yaml
+                        copyYolov5Train(tabTrainPython);
+                        tabTrainPython7=tabTrainPython;
+                        break;
+
+                }
+                try {
+                    Thread.sleep(1000);
+                    log.info("【当前执行{}停顿1s后继续执行】",tabTrainPython.getPySort());
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+
+            }
+
+            //配置文件配置完成开始训练 //丢给子线程去执行
             if(StringUtils.isNotEmpty(tabTrainPython7.getPyPath())) {
 
                 yolov5Path=tabTrainPython7.getPyPath();

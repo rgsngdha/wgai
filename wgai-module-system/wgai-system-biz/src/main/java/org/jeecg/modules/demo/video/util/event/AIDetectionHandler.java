@@ -143,9 +143,9 @@ public  class AIDetectionHandler implements EventHandler<FrameProcessEvent> {
                                          TabAiSubscriptionNew subscription, RedisTemplate redisTemplate) {
         try {
             if ("1".equals(netPush.getModelType())) {
-                identifyTypeAll.detectObjectsDify(subscription, mat, netPush, redisTemplate);
+                identifyTypeAll.detectObjectsDify(subscription, mat, netPush, redisTemplate,null);
             } else {
-                identifyTypeAll.detectObjectsDifyV5(subscription, mat, netPush, redisTemplate);
+                identifyTypeAll.detectObjectsDifyV5(subscription, mat, netPush, redisTemplate,null);
             }
         } catch (Exception e) {
             log.error("[执行检测异常] 模型类型: {}", netPush.getModelType(), e);
@@ -157,13 +157,14 @@ public  class AIDetectionHandler implements EventHandler<FrameProcessEvent> {
     private static boolean validateFirstModel(Mat mat, NetPush beforePush, identifyTypeNew identifyTypeAll,
                                               TabAiSubscriptionNew subscription) {
         try {
-            if ("1".equals(beforePush.getModelType())) {
-                return identifyTypeAll.detectObjects(subscription, mat, beforePush.getNet(),
-                        beforePush.getClaseeNames(), beforePush);
-            } else {
-                return identifyTypeAll.detectObjectsV5(subscription, mat, beforePush.getNet(),
-                        beforePush.getClaseeNames(), beforePush);
-            }
+//            if ("1".equals(beforePush.getModelType())) {
+//                return identifyTypeAll.detectObjects(subscription, mat, beforePush.getNet(),
+//                        beforePush.getClaseeNames(), beforePush);
+//            } else {
+//                return identifyTypeAll.detectObjectsV5(subscription, mat, beforePush.getNet(),
+//                        beforePush.getClaseeNames(), beforePush);
+//            }
+            return  true;
         } catch (Exception e) {
             log.error("[验证模型异常]", e);
             return false;
