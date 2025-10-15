@@ -1,18 +1,30 @@
 package org.jeecg.modules.demo.video.controller;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
+import ai.onnxruntime.OrtEnvironment;
+import ai.onnxruntime.OrtSession;
+import org.apache.commons.lang3.StringUtils;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.system.query.QueryGenerator;
 import org.jeecg.common.util.oConvertUtils;
+import org.jeecg.modules.demo.video.entity.TabAiModelNew;
+import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
 import org.jeecg.modules.demo.video.entity.TabAiVideoSetting;
+import org.jeecg.modules.demo.video.entity.TabVideoUtil;
 import org.jeecg.modules.demo.video.service.ITabAiVideoSettingService;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -20,13 +32,22 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 
+import org.jeecg.modules.demo.video.service.impl.TabAiSubscriptionNewServiceImpl;
+import org.jeecg.modules.demo.video.service.impl.TabVideoUtilServiceImpl;
+import org.jeecg.modules.tab.AIModel.NetPush;
+import org.jeecg.modules.tab.AIModel.OnnxModelWrapper;
+import org.jeecg.modules.tab.entity.TabAiModel;
+import org.jeecg.modules.tab.mapper.TabAiModelMapper;
 import org.jeecgframework.poi.excel.ExcelImportUtil;
 import org.jeecgframework.poi.excel.def.NormalExcelConstants;
 import org.jeecgframework.poi.excel.entity.ExportParams;
 import org.jeecgframework.poi.excel.entity.ImportParams;
 import org.jeecgframework.poi.excel.view.JeecgEntityExcelView;
 import org.jeecg.common.system.base.controller.JeecgController;
+import org.opencv.dnn.Dnn;
+import org.opencv.dnn.Net;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
@@ -132,8 +153,10 @@ public class TabAiVideoSettingController extends JeecgController<TabAiVideoSetti
 		this.tabAiVideoSettingService.removeByIds(Arrays.asList(ids.split(",")));
 		return Result.OK("批量删除成功!");
 	}
-	
-	/**
+
+
+
+	 /**
 	 * 通过id查询
 	 *
 	 * @param id

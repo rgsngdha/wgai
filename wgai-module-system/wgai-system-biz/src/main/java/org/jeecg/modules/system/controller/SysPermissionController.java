@@ -302,6 +302,8 @@ public class SysPermissionController {
 			result.error500("查询失败:" + e.getMessage());  
 			log.error(e.getMessage(), e);
 		}
+
+
 		return result;
 	}
 

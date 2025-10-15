@@ -130,7 +130,7 @@ spring:
         connectionProperties: druid.stat.mergeSql\=true;druid.stat.slowSqlMillis\=5000
       datasource:
         master:
-          url: jdbc:mysql://192.168.0.242:3306/java_ai_dev?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+          url: jdbc:mysql://127.0.0.1:3306/java_ai_dev?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
           username: root
           password: 123456
           driver-class-name: com.mysql.cj.jdbc.Driver
@@ -143,7 +143,7 @@ spring:
   #redis 配置
   redis:
     database: 0
-    host: 192.168.0.242
+    host: 127.0.0.1
     port: 6379
     password: ''
 #mybatis plus 设置
@@ -159,7 +159,7 @@ mybatis-plus:
       table-underline: true
   configuration:
     # 这个配置会将执行的sql打印出来，在开发或测试的时候可以用
-  #  log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    #  log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     # 返回类型为Map,显示null对应的字段
     call-setters-on-nulls: true
 #jeecg专用配置
@@ -239,15 +239,15 @@ logging:
     org.jeecg.modules.system.mapper: debug
     cn.cuiot.modules.system.mapper: debug
 #swagger
-knife4j:
-  #开启增强配置
-  enable: true
-  #开启生产环境屏蔽
-  production: false
-  basic:
-    enable: false
-    username: jeecg
-    password: jeecg1314
+#knife4j:
+#  #开启增强配置
+#  enable: false
+#  #开启生产环境屏蔽
+#  production: true
+#  basic:
+#    enable: false
+#    username: jeecg
+#    password: jeecg1314
 #第三方登录
 justauth:
   enabled: true

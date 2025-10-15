@@ -245,6 +245,17 @@ public class TabAiSubscriptionNewController extends JeecgController<TabAiSubscri
 		return Result.OK(tabAiSubscriptionNew);
 	}
 
+
+	 @ApiOperation(value="多程第三方订阅-通过id查询", notes="多程第三方订阅-通过id查询")
+	 @GetMapping(value = "/test")
+	 public Result<?> test(@RequestParam(name="id",required=true) String id) {
+
+
+
+
+		 return tabAiSubscriptionNewService.test(id);
+	 }
+
     /**
     * 导出excel
     *

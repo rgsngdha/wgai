@@ -1,6 +1,7 @@
 package org.jeecg.modules.demo.train.controller;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -70,8 +71,13 @@ public class TabTrainPythonController extends JeecgController<TabTrainPython, IT
 								   @RequestParam(name="pageNo", defaultValue="1") Integer pageNo,
 								   @RequestParam(name="pageSize", defaultValue="10") Integer pageSize,
 								   HttpServletRequest req) {
-		QueryWrapper<TabTrainPython> queryWrapper = QueryGenerator.initQueryWrapper(tabTrainPython, req.getParameterMap());
-		queryWrapper.orderByDesc("py_sort","py_type");
+		Map<String, String[]> paramMap = new HashMap<>(req.getParameterMap());
+
+// 移除你不想要的参数，比如 "xxx"
+		paramMap.remove("column");
+		paramMap.remove("order");
+		QueryWrapper<TabTrainPython> queryWrapper = QueryGenerator.initQueryWrapper(tabTrainPython, paramMap);
+		queryWrapper.orderByAsc("py_type","py_sort");
 		Page<TabTrainPython> page = new Page<TabTrainPython>(pageNo, pageSize);
 		IPage<TabTrainPython> pageList = tabTrainPythonService.page(page, queryWrapper);
 		return Result.OK(pageList);
@@ -103,9 +109,9 @@ public class TabTrainPythonController extends JeecgController<TabTrainPython, IT
 	 @GetMapping(value = "/startPy")
 	 public Result<String> add(@RequestParam(name="id",required=true) String id) {
 		 TabModelTry tabModelTry=tabModelTryService.getById(id);
-		 if(tabModelTry.getModelType()=="2"){//v5 v8
+		 if(tabModelTry.getModelType().equals("2")){//v5 v8 v10
 			 tabTrainPythonService.startPy(id,null);
-		 }else if(tabModelTry.getModelType()=="11"){ //v11
+		 }else if(tabModelTry.getModelType().equals("11")){ //v11
 			 tabTrainPythonService.startPyV11(id,null);
 		 }
 

@@ -1,10 +1,13 @@
-package org.jeecg.modules.demo.video.util;
+package org.jeecg.modules.demo.video.util.onnx;
 
 import lombok.extern.slf4j.Slf4j;
 import org.bytedeco.ffmpeg.global.avutil;
-import org.bytedeco.javacv.*;
+import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
+import org.bytedeco.javacv.Java2DFrameConverter;
 import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
+import org.jeecg.modules.demo.video.util.RedisCacheHolder;
+import org.jeecg.modules.demo.video.util.identifyTypeNewOnnx;
 import org.jeecg.modules.demo.video.util.reture.retureBoxInfo;
 import org.jeecg.modules.tab.AIModel.NetPush;
 import org.opencv.core.Mat;
@@ -34,7 +37,7 @@ import static org.jeecg.modules.tab.AIModel.AIModelYolo3.bufferedImageToMat;
  * @date 2025/5/20 17:41
  */
 @Slf4j
-public class VideoReadPicNewThreeTwo implements Runnable {
+public class VideoReadPicNewThreeTwoOnnx implements Runnable {
 
     // ================== 全局共享资源 - 解决32路摄像头资源爆炸问题 ==================
 
@@ -64,7 +67,7 @@ public class VideoReadPicNewThreeTwo implements Runnable {
     // 保持原有的ThreadLocal，但优化使用方式
     private static final ThreadLocal<WeakReference<TabAiSubscriptionNew>> threadLocalPushInfo = new ThreadLocal<>();
     private final ThreadLocal<Map<String, Net>> threadLocalNetCache = ThreadLocal.withInitial(HashMap::new);
-    private final ThreadLocal<identifyTypeNew> identifyTypeNewLocal = ThreadLocal.withInitial(identifyTypeNew::new);
+    private final ThreadLocal<identifyTypeNewOnnx> identifyTypeNewLocal = ThreadLocal.withInitial(identifyTypeNewOnnx::new);
 
     private final TabAiSubscriptionNew tabAiSubscriptionNew;
     private final RedisTemplate redisTemplate;
@@ -86,7 +89,7 @@ public class VideoReadPicNewThreeTwo implements Runnable {
     private volatile long lastFrameTime = 0;
 
     // OpenCV DNN 缓存 - 保持原有结构
-    private static final ThreadLocal<Map<String, org.opencv.dnn.Net>> DNN_NET_CACHE =
+    private static final ThreadLocal<Map<String, Net>> DNN_NET_CACHE =
             ThreadLocal.withInitial(() -> new HashMap<>());
 
     // 性能监控 - 保持原有结构
@@ -113,7 +116,7 @@ public class VideoReadPicNewThreeTwo implements Runnable {
         }
     }
 
-    public VideoReadPicNewThreeTwo(TabAiSubscriptionNew tabAiSubscriptionNew, RedisTemplate redisTemplate) {
+    public VideoReadPicNewThreeTwoOnnx(TabAiSubscriptionNew tabAiSubscriptionNew, RedisTemplate redisTemplate) {
         this.tabAiSubscriptionNew = tabAiSubscriptionNew;
         this.redisTemplate = redisTemplate;
         this.streamId = tabAiSubscriptionNew.getId();
@@ -183,7 +186,7 @@ public class VideoReadPicNewThreeTwo implements Runnable {
 
         try {
             grabber = createOptimizedGrabber();
-            identifyTypeNew identifyTypeAll = identifyTypeNewLocal.get();
+            identifyTypeNewOnnx identifyTypeAll = identifyTypeNewLocal.get();
             List<NetPush> netPushList = tabAiSubscriptionNew.getNetPushList();
 
             Frame frame;
@@ -375,7 +378,7 @@ public class VideoReadPicNewThreeTwo implements Runnable {
     /**
      * 优化的异步帧处理 - 使用全局线程池
      */
-    private void processFrameAsyncOptimized(Frame frame, List<NetPush> netPushList, identifyTypeNew identifyTypeAll) {
+    private void processFrameAsyncOptimized(Frame frame, List<NetPush> netPushList, identifyTypeNewOnnx identifyTypeAll) {
         if (forceShutdown.get() || processingExecutor.isShutdown()) {
             frame.close();
             return;
@@ -582,7 +585,7 @@ public class VideoReadPicNewThreeTwo implements Runnable {
     /**
      * 处理NetPush - 保持原有逻辑结构
      */
-    private void processNetPushOptimized(Mat mat, NetPush netPush, identifyTypeNew identifyTypeAll) {
+    private void processNetPushOptimized(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll) {
         try {
             if (forceShutdown.get()) {
                 return;
@@ -601,24 +604,22 @@ public class VideoReadPicNewThreeTwo implements Runnable {
         }
     }
 
-    private void executeDetectionOptimized(Mat mat, NetPush netPush, identifyTypeNew identifyTypeAll, List<retureBoxInfo> retureBoxInfos) {
+    private void executeDetectionOptimized(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll, List<retureBoxInfo> retureBoxInfos) {
         try {
             if (forceShutdown.get()) {
                 return;
             }
 
             long inferenceStart = System.currentTimeMillis();
-            if(netPush.getDifyType()==2){ // 1.图像 2.人体姿态
-                identifyTypeAll.detectObjectsDifyV5Pose(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
-            }else {
-                if ("1".equals(netPush.getModelType())) {
-                    identifyTypeAll.detectObjectsDify(tabAiSubscriptionNew, mat, netPush, redisTemplate, retureBoxInfos);
-                } else {
-                    if(netPush.getIsBeforZoom()==0){//开启区域放大
-                        identifyTypeAll.detectObjectsDifyV5WithROI(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
-                    }else{
-                        identifyTypeAll.detectObjectsDifyV5(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
-                    }
+
+            //不再支持v3 视频推理 效率太低 v5-v11
+            if(netPush.getDifyType()==2){
+                identifyTypeAll.detectObjectsDifyOnnxV5Pose(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
+            }else{
+                if(netPush.getIsBeforZoom()==0){//开启区域放大
+                    identifyTypeAll.detectObjectsDifyOnnxV5WithROI(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
+                }else {
+                    identifyTypeAll.detectObjectsDifyOnnxV5(tabAiSubscriptionNew, mat, netPush, redisTemplate, retureBoxInfos);
                 }
             }
 
@@ -635,7 +636,7 @@ public class VideoReadPicNewThreeTwo implements Runnable {
         }
     }
 
-    private void processWithPredecessorsOptimized(Mat mat, NetPush netPush, identifyTypeNew identifyTypeAll) {
+    private void processWithPredecessorsOptimized(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll) {
         List<NetPush> before = netPush.getListNetPush();
         if (before == null || before.isEmpty()) {
             return;
@@ -662,21 +663,15 @@ public class VideoReadPicNewThreeTwo implements Runnable {
         }
     }
 
-    private retureBoxInfo validateFirstModelOptimized(Mat mat, NetPush beforePush, identifyTypeNew identifyTypeAll) {
+    private retureBoxInfo validateFirstModelOptimized(Mat mat, NetPush beforePush, identifyTypeNewOnnx identifyTypeAll) {
         try {
             if (forceShutdown.get()) {
                 return null;
             }
 
-            if ("1".equals(beforePush.getModelType())) {
-                return identifyTypeAll.detectObjects(
-                        tabAiSubscriptionNew, mat, beforePush.getNet(),
-                        beforePush.getClaseeNames(), beforePush);
-            } else {
-                return identifyTypeAll.detectObjectsV5(
-                        tabAiSubscriptionNew, mat, beforePush.getNet(),
-                        beforePush.getClaseeNames(), beforePush,redisTemplate);
-            }
+            return identifyTypeAll.detectObjectsV5Onnx(
+                    tabAiSubscriptionNew, mat, beforePush,redisTemplate);
+
         } catch (Exception e) {
             log.error("[验证模型异常] 流: {}", tabAiSubscriptionNew.getName(), e);
             return null;

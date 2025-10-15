@@ -5,8 +5,11 @@ spring:
     active: '@profile.name@'
 audio:
     path: 'F:\JAVAAI\audio\sherpa-onnx-conformer-zh-stateless2-2023-05-23\'
-    dll: 'E:\JAVAHOME\JAVA_AI\sherpa-onnx-jni.dll'
-opencv: '/home/opencv481/opencv-4.8.1/build/lib/libopencv_java481.so'
+    dll: 'E:\JAVAHOME\JAVA_AI\sherpa-onnx-jni.dll;/home/audio/libsherpa-onnx-jni.so'
+opencv: 'D:\opencv\build\java\x64\opencv_java481.dll;F:\JAVAAI\opencv481\opencv\build\java\x64\opencv_java481.dll;D:\opencv\build\java\x64\opencv_java481.dll;/home/opencv481/opencv-4.8.1/build/lib/libopencv_java481.so'
+numThread: 1
+cameraNum: 16
+  ##'D:\opencv\build\java\x64\opencv_java481.dll'F:\JAVAAI\opencv481\code_version_opencv\opencv-4.8.1\opencv-4.8.1\build\install\x64\vc16\bin\opencv_java481.dll;
 ##'/home/opencv481/opencv-4.8.1/build/lib/libopencv_java481.so'
   ## 'F:\JAVAAI\opencv481\opencv\build\java\x64\opencv_java481.dll'
 

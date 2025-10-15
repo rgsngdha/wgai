@@ -1,30 +1,29 @@
-package org.jeecg.modules.demo.video.util;
+package org.jeecg.modules.demo.video.util.onnx;
 
 import lombok.extern.slf4j.Slf4j;
 import org.bytedeco.ffmpeg.global.avutil;
-import org.bytedeco.javacv.*;
+import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
+import org.bytedeco.javacv.Java2DFrameConverter;
 import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
+import org.jeecg.modules.demo.video.util.RedisCacheHolder;
+import org.jeecg.modules.demo.video.util.identifyTypeNew;
+import org.jeecg.modules.demo.video.util.identifyTypeNewOnnx;
 import org.jeecg.modules.demo.video.util.reture.retureBoxInfo;
 import org.jeecg.modules.tab.AIModel.NetPush;
 import org.opencv.core.Mat;
 import org.opencv.dnn.Net;
-import org.opencv.imgcodecs.Imgcodecs;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Stream;
-
 
 import static org.jeecg.modules.tab.AIModel.AIModelYolo3.bufferedImageToMat;
 
@@ -34,11 +33,11 @@ import static org.jeecg.modules.tab.AIModel.AIModelYolo3.bufferedImageToMat;
  * @date 2025/5/20 17:41
  */
 @Slf4j
-public class VideoReadPicNew implements Runnable {
+public class VideoReadPicOnnxNew implements Runnable {
 
     private static final ThreadLocal<TabAiSubscriptionNew> threadLocalPushInfo = new ThreadLocal<>();
     private final ThreadLocal<Map<String, Net>> threadLocalNetCache = ThreadLocal.withInitial(HashMap::new);
-    private final ThreadLocal<identifyTypeNew> identifyTypeNewLocal = ThreadLocal.withInitial(identifyTypeNew::new);
+    private final ThreadLocal<identifyTypeNewOnnx> identifyTypeNewLocal = ThreadLocal.withInitial(identifyTypeNewOnnx::new);
 
     private final ThreadLocal<Java2DFrameConverter> converterLocal = ThreadLocal.withInitial(Java2DFrameConverter::new);
     private final TabAiSubscriptionNew tabAiSubscriptionNew;
@@ -59,7 +58,7 @@ public class VideoReadPicNew implements Runnable {
     private volatile long lastFrameTime = 0;
 
     // OpenCV DNN 优化 - 线程本地存储
-    private static final ThreadLocal<Map<String, org.opencv.dnn.Net>> DNN_NET_CACHE =
+    private static final ThreadLocal<Map<String, Net>> DNN_NET_CACHE =
             ThreadLocal.withInitial(() -> new HashMap<>());
 
     // 性能监控
@@ -72,7 +71,7 @@ public class VideoReadPicNew implements Runnable {
     private final BlockingQueue<Mat> matPool = new LinkedBlockingQueue<>(20); // 减小池大小
     private final BlockingQueue<BufferedImage> imagePool = new LinkedBlockingQueue<>(20);
 
-    public VideoReadPicNew(TabAiSubscriptionNew tabAiSubscriptionNew, RedisTemplate redisTemplate) {
+    public VideoReadPicOnnxNew(TabAiSubscriptionNew tabAiSubscriptionNew, RedisTemplate redisTemplate) {
         this.tabAiSubscriptionNew = tabAiSubscriptionNew;
         this.redisTemplate = redisTemplate;
         this.streamId=tabAiSubscriptionNew.getId();
@@ -98,7 +97,7 @@ public class VideoReadPicNew implements Runnable {
 
         try {
             grabber = createOptimizedGrabber();
-            identifyTypeNew identifyTypeAll = identifyTypeNewLocal.get();
+            identifyTypeNewOnnx identifyTypeAll = identifyTypeNewLocal.get();
             List<NetPush> netPushList = threadLocalPushInfo.get().getNetPushList();
 
             Frame frame;
@@ -158,7 +157,7 @@ public class VideoReadPicNew implements Runnable {
     /**
      * 关键修改6：优化的异步帧处理 - 解决延迟问题
      */
-    private void processFrameAsyncOptimized(Frame frame, List<NetPush> netPushList, identifyTypeNew identifyTypeAll) {
+    private void processFrameAsyncOptimized(Frame frame, List<NetPush> netPushList, identifyTypeNewOnnx identifyTypeAll) {
         if (forceShutdown.get()) {
             frame.close();
             return;
@@ -209,6 +208,7 @@ public class VideoReadPicNew implements Runnable {
                     if (forceShutdown.get()) {
                         break;
                     }
+
 
                     // 检查单个推理超时(10秒)
                     if (System.currentTimeMillis() - inferenceStart > 10000) {
@@ -261,31 +261,15 @@ public class VideoReadPicNew implements Runnable {
     /**
      * 关键修改7：优化的推理处理 - 使用线程本地DNN网络
      */
-    private void processNetPushOptimized(Mat mat, NetPush netPush, identifyTypeNew identifyTypeAll) {
+    private void processNetPushOptimized(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll) {
         try {
             if (forceShutdown.get()) {
                 return;
             }
 
-            // 使用线程本地的DNN网络缓存
-//            String modelKey = netPush.getTabAiModel().getAiName();
-//            Map<String, org.opencv.dnn.Net> netCache = DNN_NET_CACHE.get();
-//
-//            org.opencv.dnn.Net dnnNet = netCache.get(modelKey);
-//            if (dnnNet == null) {
-//                // 创建新的DNN网络实例 - 线程安全
-//                dnnNet = cloneDnnNet(netPush.getNet());
-//                // 关键修改8：OpenCV DNN线程优化
-//                dnnNet.setPreferableBackend(org.opencv.dnn.Dnn.DNN_BACKEND_OPENCV);
-//                dnnNet.setPreferableTarget(org.opencv.dnn.Dnn.DNN_TARGET_CPU);
-//                // 设置线程数为1，避免线程竞争
-//                org.opencv.core.Core.setNumThreads(1);
-//
-//                netCache.put(modelKey, dnnNet);
-//                log.info("[创建线程本地DNN网络] 模型: {}", modelKey);
-//            }
 
-            if (netPush.getIsBefor() == 0) {
+
+            if (netPush.getIsBefor() == 0) {  //有前置
                 processWithPredecessorsOptimized(mat, netPush, identifyTypeAll);
             } else {
                 executeDetectionOptimized(mat, netPush, identifyTypeAll,null);
@@ -300,13 +284,13 @@ public class VideoReadPicNew implements Runnable {
     /**
      * 克隆DNN网络 - 为每个线程创建独立实例
      */
-    private org.opencv.dnn.Net cloneDnnNet(org.opencv.dnn.Net originalNet) {
+    private Net cloneDnnNet(Net originalNet) {
         // 这里需要根据你的实际情况实现DNN网络克隆
         // 一般是重新加载模型文件
         return originalNet; // 临时返回原网络，需要根据实际情况修改
     }
 
-    private void executeDetectionOptimized(Mat mat, NetPush netPush, identifyTypeNew identifyTypeAll,List<retureBoxInfo> retureBoxInfos) {
+    public void executeDetectionOptimized(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll,List<retureBoxInfo> retureBoxInfos) {
         try {
             if (forceShutdown.get()) {
                 return;
@@ -314,20 +298,18 @@ public class VideoReadPicNew implements Runnable {
 
             // 添加推理超时检查
             long inferenceStart = System.currentTimeMillis();
-            if(netPush.getDifyType()==2){ // 1.图像 2.人体姿态
-                identifyTypeAll.detectObjectsDifyV5Pose(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
-            }else{
-                if ("1".equals(netPush.getModelType())) {
-                    identifyTypeAll.detectObjectsDify(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
-                } else {
-                    if(netPush.getIsBeforZoom()==0){//开启区域放大
-                        identifyTypeAll.detectObjectsDifyV5WithROI(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
-                    }else{
-                        identifyTypeAll.detectObjectsDifyV5(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
-                    }
 
+            //不再支持V3 只支持v5-v11 1.图像 2.人体姿态
+            if(netPush.getDifyType()==2){
+                identifyTypeAll.detectObjectsDifyOnnxV5Pose(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
+            }else{
+                if(netPush.getIsBeforZoom()==0){//开启区域放大
+                    identifyTypeAll.detectObjectsDifyOnnxV5WithROI(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
+                }else{
+                    identifyTypeAll.detectObjectsDifyOnnxV5(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
                 }
             }
+
 
 
             long inferenceTime = System.currentTimeMillis() - inferenceStart;
@@ -340,7 +322,7 @@ public class VideoReadPicNew implements Runnable {
         }
     }
 
-    private void processWithPredecessorsOptimized(Mat mat, NetPush netPush, identifyTypeNew identifyTypeAll) {
+    public void processWithPredecessorsOptimized(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll) {
         List<NetPush> before = netPush.getListNetPush();
         if (before == null || before.isEmpty()) {
             return;
@@ -365,21 +347,15 @@ public class VideoReadPicNew implements Runnable {
         }
     }
 
-    private retureBoxInfo validateFirstModelOptimized(Mat mat, NetPush beforePush, identifyTypeNew identifyTypeAll) {
+    private retureBoxInfo validateFirstModelOptimized(Mat mat, NetPush beforePush, identifyTypeNewOnnx identifyTypeAll) {
         try {
             if (forceShutdown.get()) {
                 return null;
             }
 
-            if ("1".equals(beforePush.getModelType())) {
-                return identifyTypeAll.detectObjects(
-                        tabAiSubscriptionNew, mat, beforePush.getNet(),
-                        beforePush.getClaseeNames(), beforePush);
-            } else {
-                return identifyTypeAll.detectObjectsV5(
-                        tabAiSubscriptionNew, mat, beforePush.getNet(),
-                        beforePush.getClaseeNames(), beforePush,redisTemplate);
-            }
+            return identifyTypeAll.detectObjectsV5Onnx(
+                        tabAiSubscriptionNew, mat, beforePush,redisTemplate);
+
         } catch (Exception e) {
             log.error("[验证模型异常]", e);
             return null;
@@ -544,7 +520,7 @@ public class VideoReadPicNew implements Runnable {
             grabber.setOption("hwaccel_device", "0");
             grabber.setOption("hwaccel_output_format", "cuda");
             log.info("[使用GPU_CUDA加速解码]");
-        }else { //if(tabAiSubscriptionNew.getEventTypes().equals("4"))
+        }else if(tabAiSubscriptionNew.getEventTypes().equals("4")){
             //intel 加速
             grabber.setOption("hwaccel", "qsv");          // Intel QuickSync
            //grabber.setVideoCodecName("hevc_qsv");         // H.265 QSV

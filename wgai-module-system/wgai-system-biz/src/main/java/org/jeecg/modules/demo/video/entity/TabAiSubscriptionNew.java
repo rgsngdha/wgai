@@ -157,7 +157,9 @@ public class TabAiSubscriptionNew implements Serializable {
     @ApiModelProperty(value = "是否开启区域识别")
     private java.lang.Integer isBy;
 
-
+    @ApiModelProperty(value = "解码方式")
+    @Dict(dicCode = "model_type")
+    private Integer modelJmType;
 
     @TableField(exist = false)
     TabVideoUtil tabVideoUtil;

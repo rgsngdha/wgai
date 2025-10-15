@@ -790,7 +790,7 @@ public class VideoReadPicNewThreeTwoNew implements Runnable {
                 return;
             }
 
-            if (netPush.getIsBefor() == 1) {
+            if (netPush.getIsBefor() == 0) {
                 // 处理有前置模型的情况
                 processWithPredecessorsOptimized(mat, netPush, identifyType);
             } else {
@@ -859,7 +859,7 @@ public class VideoReadPicNewThreeTwoNew implements Runnable {
             } else {
                 return identifyType.detectObjectsV5(
                         tabAiSubscriptionNew, mat, beforePush.getNet(),
-                        beforePush.getClaseeNames(), beforePush);
+                        beforePush.getClaseeNames(), beforePush,redisTemplate);
             }
         } catch (Exception e) {
             log.error("[验证模型异常] 流: {}", tabAiSubscriptionNew.getName(), e);

@@ -384,7 +384,7 @@ public class VideoReadPicNewOptimized implements Runnable {
                         netPush.getClaseeNames(), netPush);
             } else {
                 return identifyType.detectObjectsV5(tabAiSubscriptionNew, mat, netPush.getNet(),
-                        netPush.getClaseeNames(), netPush);
+                        netPush.getClaseeNames(), netPush,redisTemplate);
             }
         } catch (Exception e) {
             log.error("[模型验证异常]", e);

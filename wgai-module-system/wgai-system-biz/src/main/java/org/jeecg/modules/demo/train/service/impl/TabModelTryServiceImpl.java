@@ -312,7 +312,7 @@ public class TabModelTryServiceImpl extends ServiceImpl<TabModelTryMapper, TabMo
                     tabModelTry.setFileSize(PicSize);
                 } else {
                     tabModelTry.setPicNumber(Integer.parseInt(tabModelTry.getPicNumber()) + list.size() + "");
-                    tabModelTry.setFileSize(tabModelTry.getFileSize() + PicSize);
+                    tabModelTry.setFileSize(tabModelTry.getFileSize()==null?0:tabModelTry.getFileSize() + PicSize);
                 }
                 this.updateById(tabModelTry);
             } else {
@@ -445,7 +445,7 @@ public class TabModelTryServiceImpl extends ServiceImpl<TabModelTryMapper, TabMo
         if (net == null) { //尽量减少消耗
             if (tabAiModel.getSpareOne().equals("1")) {  //v3
                 net = Dnn.readNetFromDarknet(upLoadPath + File.separator + tabAiModel.getAiConfig(), upLoadPath + File.separator + tabAiModel.getAiWeights());
-            } else if (tabAiModel.getSpareOne().equals("2") || tabAiModel.getSpareOne().equals("3")) { //v5 v8
+            } else if (tabAiModel.getSpareOne().equals("2") || tabAiModel.getSpareOne().equals("3")||tabAiModel.getSpareOne().equals("11")) { //v5 v8
                 net = Dnn.readNetFromONNX(upLoadPath + File.separator + tabAiModel.getAiWeights());
             }
 

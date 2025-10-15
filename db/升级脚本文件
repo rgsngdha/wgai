@@ -1,18 +1,59 @@
-ALTER TABLE `java_ai_dev`.`tab_ai_model_bund`
+ALTER TABLE `tab_ai_warning`
+ADD COLUMN `warning_name` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '预警摄像头';
+ADD COLUMN `warning_pic` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '预警图片';
+
+
+DROP TABLE IF EXISTS `tab_ai_subscription_new`;
+CREATE TABLE `tab_ai_subscription_new`  (
+  `id` varchar(36) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL,
+  `create_by` varchar(50) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '创建人',
+  `create_time` date NULL DEFAULT NULL COMMENT '创建日期',
+  `update_by` varchar(50) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '更新人',
+  `update_time` date NULL DEFAULT NULL COMMENT '更新日期',
+  `sys_org_code` varchar(64) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '所属部门',
+  `event_types` varchar(920) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '解码方式',
+  `event_url` varchar(500) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '订阅回调地址',
+  `event_number` varchar(32) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '同类型报警间隔',
+  `event_info` varchar(32) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '报警消息',
+  `remake` varchar(500) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '备注',
+  `push_static` int(11) NULL DEFAULT NULL COMMENT '推送状态',
+  `index_code` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '设备编号',
+  `run_state` int(11) NULL DEFAULT NULL COMMENT '执行状态',
+  `name` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '名称',
+  `audio_static` int(11) NULL DEFAULT NULL COMMENT '播报状态',
+  `audio_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '播报地址',
+  `is_begin` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '是否需要前置',
+  `begin_event_types` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '前置模型类型',
+  `begin_name` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '前置模型内容',
+  `py_type` varchar(10) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '解码脚本',
+  `path_save` varchar(32) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '保存目录',
+  `save_pic` int(11) NULL DEFAULT NULL COMMENT '是否保存图片',
+  `is_recording` int(11) NULL DEFAULT NULL COMMENT '是否开启报警录像',
+  `record_time` int(11) NULL DEFAULT NULL COMMENT '报价录像时间',
+  `save_record` int(11) NULL DEFAULT NULL COMMENT '是否本地保存录像',
+  `save_localhost` int(11) NULL DEFAULT NULL COMMENT '保存本地',
+  `is_by` int(11) NULL DEFAULT NULL COMMENT '是否开启区域识别',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+
+
+ALTER TABLE  `tab_ai_model_bund`
 ADD COLUMN `is_push` varchar(255) NULL COMMENT '是否推送' AFTER `space_two`,
 ADD COLUMN `is_audio` varchar(255) NULL COMMENT '是否播报' AFTER `is_push`,
 ADD COLUMN `push_id` varchar(255) NULL COMMENT '推送地址' AFTER `is_audio`;
 ADD COLUMN `audio_id` varchar(255) NULL COMMENT '推送地址' AFTER `is_audio`;
 
 
-ALTER TABLE `java_ai_dev`.`tab_ai_subscription`
+ALTER TABLE  `tab_ai_subscription`
 ADD COLUMN `name` varchar(255) NULL COMMENT '名称' AFTER `run_state`;
 
 
-ALTER TABLE `java_ai_dev`.`tab_ai_subscription`
+ALTER TABLE  `tab_ai_subscription`
 ADD COLUMN `audio_static` int(2) NULL COMMENT '播报状态' AFTER `name`,
 ADD COLUMN `audio_id` varchar(255) NULL COMMENT '播报地址' AFTER `audio_static`;
-
 
 DROP TABLE IF EXISTS `tab_audio_device`;
 CREATE TABLE `tab_audio_device`  (
@@ -35,3 +76,19 @@ CREATE TABLE `tab_audio_device`  (
 ) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+
+ALTER TABLE  `tab_easy_pic`
+ADD COLUMN `mark_feature` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '标注特征' AFTER `model_id`;
+
+ALTER TABLE  `tab_ai_base` 
+MODIFY COLUMN `space_one` varchar(32) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '\r\n播报内容' AFTER `remark`,
+MODIFY COLUMN `space_two` int(32) NULL DEFAULT 0 COMMENT '备用2' AFTER `space_one`;
+
+ALTER TABLE  `tab_ai_subscription`
+ADD COLUMN `is_begin` varchar(255) NULL COMMENT '是否需要前置' AFTER `audio_id`,
+ADD COLUMN `begin_event_types` varchar(255) NULL COMMENT '前置模型类型' AFTER `is_begin`,
+ADD COLUMN `begin_name` varchar(255) NULL COMMENT '前置模型内容' AFTER `begin_event_types`,
+ADD COLUMN `py_type` int(32) NULL DEFAULT 0 COMMENT '解码脚本' AFTER `begin_name`;
+
+

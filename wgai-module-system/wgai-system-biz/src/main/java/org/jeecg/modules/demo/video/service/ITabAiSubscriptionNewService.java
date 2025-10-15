@@ -24,4 +24,7 @@ public interface ITabAiSubscriptionNewService extends IService<TabAiSubscription
      * @param id
      */
     public Result<String> getVideoPic(String id);
+
+
+    public Result<?> test(String id);
 }

@@ -113,11 +113,11 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
                     sendCocoYaml( tabTrainPython,tabModelTryService.getById(id));
                     break;
                 case 5:
-                    //修改原版 80 的nc 根据实际情况修改 nc
+                    //修改原版 80 的nc 根据实际情况修改 nc //修改训练配置文件yaml
                     sendYolov5s( tabTrainPython,tabModelTryService.getById(id));
                     break;
                 case 6:
-                    //修改训练配置文件yaml
+
                     copyYolov5Train(tabTrainPython);
                     tabTrainPython7=tabTrainPython;
                     break;
@@ -155,6 +155,7 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
                 log.info("【当前模型任务正在训练中不可重复训练】");
                 return Result.error("任务在训练中不可重复训练");
             }
+            log.info("当前yolov11训练开始！！！！！！！！");
             QueryWrapper<TabTrainPython> queryWrapper=new QueryWrapper<>();
             if(StringUtils.isNotEmpty(sort)){
                 queryWrapper.eq("py_sort",Integer.parseInt(sort));
@@ -184,17 +185,19 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
                         break;
                     case 4:
                         //生成coco配置文件
-                        sendCocoYaml( tabTrainPython,tabModelTryService.getById(id));
+                        sendCocoYaml11( tabTrainPython,tabModelTryService.getById(id));
+
                         break;
                     case 5:
                         //修改原版 80 的nc 根据实际情况修改 nc
-                        sendYolov5s( tabTrainPython,tabModelTryService.getById(id));
-                        break;
-                    case 6:
-                        //修改训练配置文件yaml
-                        copyYolov5Train(tabTrainPython);
+                      //  sendYolov5s( tabTrainPython,tabModelTryService.getById(id));
                         tabTrainPython7=tabTrainPython;
                         break;
+//                    case 6:
+//                        //修改训练配置文件yaml
+//                        copyYolov5Train(tabTrainPython);
+//                        tabTrainPython7=tabTrainPython;
+//                        break;
 
                 }
                 try {
@@ -209,9 +212,8 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
             //配置文件配置完成开始训练 //丢给子线程去执行
             if(StringUtils.isNotEmpty(tabTrainPython7.getPyPath())) {
 
-                yolov5Path=tabTrainPython7.getPyPath();
                 //开始执行训练
-                startTrain(tabTrainPython7,id);
+                startTrain11(tabTrainPython7,id);
             }else{
                 return Result.error("执行失败");
             }
@@ -244,7 +246,113 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
 
 
     }
+    public  void startTrain11( TabTrainPython tabTrainPython7,String id){
+        String  path=tabTrainPython7.getPyPath();//yolov5根目录
+        String  otherTrain=tabTrainPython7.getSpareOne();
+        String   otherExport=tabTrainPython7.getSpareTwo();
+        Thread trainingThread = new Thread(() -> {
+            StringBuffer stringBuffer=new StringBuffer();
+            String cmdTxt="未找到";
+            String cmdPath="未找到";
+            String cmdEpchs="未找到";
+            try {
 
+                log.info("【第7步】进入yolov11根目录{}"," Hello  "+path );
+                executePythonScript(new String[]{"/bin/bash", "-c","echo 'Hello, World!'"});
+                log.info("【当你在日志中看到了hello world 说明你已经成功90%了】");
+                //executePythonScript(new String[]{"/bin/bash", "-c","cd "+path+" && source myenv/bin/activate && python3 wgtrain.py"});
+                // Step 1: 进入 YOLOv5 根目录
+                log.info("【第7步】进入yolov5根目录{}"," cd  "+path );
+                // Step 2: 进入虚拟环境
+                log.info("【第7步】进入虚拟环境{}","/bin/bash -c cd "+path+" &&  "+otherTrain+"  ");
+                // Step 3: 执行 YOLOv5 训练脚本
+                log.info("【第7步】执行训练脚本");
+
+                log.info("训练完成，退出代码: " );
+                try {
+                    ProcessBuilder processBuilder = new ProcessBuilder(new String[]{"/bin/bash", "-c","cd "+path+" &&  "+otherTrain+"  "});
+                    processBuilder.redirectErrorStream(true);  // 合并错误流到标准输出流
+
+                    Process process = processBuilder.start();
+                    log.info("执行脚本内容");
+                    // 捕获标准输出流
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+                    String line;
+
+                    while ((line = reader.readLine()) != null) {
+                        log.info(line);  // 打印日志到控制台
+                        stringBuffer.append(line+"\n");
+
+                        String textCmd=getLogImportant(line); //去除训练结果 map50-95
+                        if(!textCmd.equals("未找到")) {
+                            cmdTxt=textCmd;
+                        }
+                        String pathcmd=getLogPath11(line); //取出结果内容 目录
+                        if(!pathcmd.equals("未找到")) {
+                            cmdPath=pathcmd;
+                        }
+                        String epochscmd=getLogEpochs11(line); //训练次数
+                        if(!epochscmd.equals("未找到")) {
+                            cmdEpchs=epochscmd;
+                        }
+                    }
+
+                    // 等待进程完成
+                    int exitCode = process.waitFor();
+                    log.info("Python script executed with exit code: " + exitCode);
+                } catch (IOException | InterruptedException e) {
+                    e.printStackTrace();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }finally {
+                log.info("【不管结果如何都要去保存日志并修正训练标记】");
+                if(StringUtils.isNotEmpty(cmdPath)){  //转换pt为onnx文件
+                    try {
+                        //python export.py \
+                        //    --weights /weights/best.pt \
+                        //    --img 640 \
+                        //    --batch 1 \
+                        //    --device 0 \
+                        //    --include onnx \
+                        //    --dynamic \
+                        //    --simplify \
+                        //    --opset 11
+                        ProcessBuilder processBuilder = new ProcessBuilder(new String[]{"/bin/bash", "-c","cd "+path+" && yolo export model="+cmdPath+"/weights/best.pt format=onnx "+otherExport+" "});
+                        processBuilder.redirectErrorStream(true);  // 合并错误流到标准输出流
+
+                        Process process = processBuilder.start();
+                        log.info("执行转换脚本内容");
+                        // 捕获标准输出流
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+                        String line;
+
+                        while ((line = reader.readLine()) != null) {
+                            log.info(line);  // 打印日志到控制台
+                            stringBuffer.append(line+"\n");
+
+                        }
+
+                        // 等待进程完成
+                        int exitCode = process.waitFor();
+                        log.info("Python pt to onnx 完成 " + exitCode);
+                    }catch (Exception ex){
+                        ex.printStackTrace();
+                        log.error("转换失败");
+                    }
+
+                }
+                saveLog11(stringBuffer,id,cmdTxt,cmdPath, cmdEpchs);
+
+            }
+        });
+
+        // 启动子线程
+        trainingThread.start();
+
+        // 主线程可以继续做其他事情
+        log.info("子线程已启动，正在进行 YOLOv11 训练...");
+    }
     public  void startTrain( TabTrainPython tabTrainPython7,String id){
          String  path=tabTrainPython7.getPyPath();//yolov5根目录
          String  otherTrain=tabTrainPython7.getSpareOne();
@@ -441,12 +549,14 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
                         tabAiModel.setAiName(modelTry.getModelName());
                         tabAiModel.setAiWeights(modelTry.getModelOnnx());
                         tabAiModel.setSpareOne("2");
+                        tabAiModel.setModelDify(2);
                         tabAiModel.setAiNameName( setToTxtClass(uploadPath,targetPath+"/className.txt",modelTry.getTxtInfo()));
                         iTabAiModelService.save(tabAiModel);
                     }else{
                         tabAiModel.setAiName(modelTry.getModelName());
                         tabAiModel.setAiWeights(modelTry.getModelOnnx());
                         tabAiModel.setSpareOne("2");
+                        tabAiModel.setModelDify(2);
                         tabAiModel.setAiNameName( setToTxtClass(uploadPath,targetPath+"/className.txt",modelTry.getTxtInfo()));
                         iTabAiModelService.updateById(tabAiModel);
                     }
@@ -465,20 +575,168 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
             log.info("训练结束日志失败也要保存一下看看原因{}",text.length());
             TabTrainLog tabTrainLog=new TabTrainLog();
             tabTrainLog.setModelId(id);
-            tabTrainLog.setTrainLog(stringBuffer.toString());
-
-            if(text.length()<=3999999){//小于2G保存一下
-                tabTrainLog.setCmdText(text);
-            }else{
-                tabTrainLog.setCmdText("日志文件过于庞大舍弃了");
-            }
-
+            tabTrainLog.setTrainLog(saveLogPath(stringBuffer.toString()));
+            tabTrainLog.setCmdText(saveLogPath(text));
             tabTrainLog.setCmdPath(path);
             tabTrainLogService.save(tabTrainLog);
 
         }
 
     }
+
+    public String saveLogPath(String text){
+        try {
+            // 日志目录，可以根据你的环境调整
+            String logDir = uploadPath + "/logs/train";
+            File dir = new File(logDir);
+            if (!dir.exists()) {
+                dir.mkdirs();
+            }
+
+            // 生成文件名（日期 + 时间戳避免重复）
+            String fileName = "train_log_" + System.currentTimeMillis() + ".txt";
+            File logFile = new File(dir, fileName);
+
+            // 写入文件（UTF-8 编码）
+            try (FileWriter writer = new FileWriter(logFile, false)) {
+                writer.write(text);
+            }
+
+            // 数据库只保存文件路径（或其他提示信息）
+            return "/logs/train/"+fileName;
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return "保存失败";
+        }
+    }
+    public  void saveLog11( StringBuffer stringBuffer,String id,String text,String path,String epochscmd){
+        try {
+            /**
+             * 先移除 后保存
+             */
+            QueryWrapper<TabTrainLog> tabTrainLogQueryWrapper=new QueryWrapper<>();
+            tabTrainLogQueryWrapper.eq("model_id",id);
+            tabTrainLogService.remove(tabTrainLogQueryWrapper);
+
+            QueryWrapper<TabTrainResult> tabTrainResultQueryWrapper=new QueryWrapper<>();
+            tabTrainResultQueryWrapper.eq("model_id",id);
+            tabTrainResultService.remove(tabTrainResultQueryWrapper);
+
+
+
+            /***
+             * 保存内容
+             */
+            TabModelTry modelTry=tabModelTryService.getById(id);
+            modelTry.setRunState(0);//运行结束
+            modelTry.setRunDateEnd(new Date());
+
+            if(StringUtils.isNotEmpty(path)){ //当前不为空说明运行正常
+                //读取当前文件下的数据copy到目录
+                modelTry.setOnnxIsok(1);
+                String targetPaht=uploadPath+File.separator+modelTry.getPicName();
+                String targetPath=modelTry.getPicName();
+                TabTrainResult tabTrainResult=new TabTrainResult();
+                if(copyYolov5Onnx(path, targetPaht)){
+                    modelTry.setModelOnnx(targetPath+"/weights/best.onnx");
+                    tabTrainResult.setModelId(id);
+                    tabTrainResult.setStartTime(modelTry.getRunDateStart());
+                    tabTrainResult.setEndTime(modelTry.getRunDateEnd());
+                    tabTrainResult.setLabels(targetPath+"/labels.jpg"); //
+                    tabTrainResult.setLabelsCorrelogram(targetPath+"/confusion_matrix_normalized.png");
+                    tabTrainResult.setTrainBatch0(targetPath+"/train_batch0.jpg");
+                    tabTrainResult.setTrainBatch1(targetPath+"/train_batch1.jpg");
+                    tabTrainResult.setTrainBatch2(targetPath+"/train_batch2.jpg");
+                    tabTrainResult.setValBatch0Lables(targetPath+"/val_batch0_labels.jpg");
+                    tabTrainResult.setValBatch0Pred(targetPath+"/val_batch0_pred.jpg");
+                    tabTrainResult.setConfusionMatrix(targetPath+"/confusion_matrix.png");
+                    tabTrainResult.setF1Curve(targetPath+"/BoxF1_curve.png");
+                    tabTrainResult.setPpCurve(targetPath+"/BoxP_curve.png");
+                    tabTrainResult.setPrCurve(targetPath+"/BoxPR_curve.png");
+                    tabTrainResult.setRrCurve(targetPath+"/BoxR_curve.png");
+                    tabTrainResult.setResults(targetPath+"/results.png");
+                    tabTrainResult.setHypYaml(targetPath+"/args.yaml");
+                    tabTrainResult.setOptYaml(targetPath+"/args.yaml");
+                    tabTrainResult.setBestPt(targetPath+"/weights/best.pt");
+                    tabTrainResult.setLastPt(targetPath+"/weights/last.pt");
+                    tabTrainResult.setEpochs(epochscmd);
+                    tabTrainResult.setTrainImages(modelTry.getPicNumber());
+                    tabTrainResult.setTrainState("1");
+                    tabTrainResult.setOnnxWeight(targetPath+"/weights/best.onnx");
+                    if(StringUtils.isNotEmpty(text)){
+                        String [] classtxt=text.split(" ");
+                        int i=0;
+                        for (String classt:classtxt) {
+                            if(StringUtils.isNotEmpty(classt)){
+                                if(i==0){
+                                    tabTrainResult.setTrainClass(classt);
+                                }else if(i==3){
+                                    tabTrainResult.setPercision(classt);
+                                }else if(i==4){
+                                    tabTrainResult.setRecall(classt);
+                                }else if(i==5) {
+                                    tabTrainResult.setMap50(classt);
+                                }else if(i==6) {
+                                    tabTrainResult.setMap5095(classt);
+                                }
+                                i++;
+                            }
+                        }
+                    }
+
+                    tabTrainResultService.save(tabTrainResult);
+                    //更新模型库
+                    QueryWrapper<TabAiModel> tabAiModelQueryWrapper=new QueryWrapper<>();
+                    tabAiModelQueryWrapper.eq("spare_five",id);
+                    TabAiModel tabAiModel=iTabAiModelService.getOne(tabAiModelQueryWrapper);
+                    if(tabAiModel==null){//报错
+                        tabAiModel=new TabAiModel();
+                        tabAiModel.setAiName(modelTry.getModelName());
+                        tabAiModel.setAiWeights(modelTry.getModelOnnx());
+                        tabAiModel.setSpareOne("11");
+                        tabAiModel.setModelDify(11);
+                        tabAiModel.setAiNameName( setToTxtClass(uploadPath,targetPath+"/className.txt",modelTry.getTxtInfo()));
+                        iTabAiModelService.save(tabAiModel);
+                    }else{
+                        tabAiModel.setAiName(modelTry.getModelName());
+                        tabAiModel.setAiWeights(modelTry.getModelOnnx());
+                        tabAiModel.setSpareOne("11");
+                        tabAiModel.setModelDify(11);
+                        tabAiModel.setAiNameName( setToTxtClass(uploadPath,targetPath+"/className.txt",modelTry.getTxtInfo()));
+                        iTabAiModelService.updateById(tabAiModel);
+                    }
+
+                }
+
+            }else{
+                log.error("【训练任务执行失败请检查日志】");
+            }
+            tabModelTryService.updateById(modelTry);
+
+
+        }catch (Exception ex){
+            ex.printStackTrace();
+        }finally {
+            log.info("训练结束日志失败也要保存一下看看原因{}",text.length());
+            TabTrainLog tabTrainLog=new TabTrainLog();
+            tabTrainLog.setModelId(id);
+            ;
+            tabTrainLog.setTrainLog(saveLogPath(stringBuffer.toString()));
+
+//            if(text.length()<=3999999){//小于2G保存一下
+//                tabTrainLog.setCmdText(text);
+//            }else{
+//                tabTrainLog.setCmdText("日志文件过于庞大舍弃了");
+//            }
+            tabTrainLog.setCmdText(saveLogPath(text));
+            tabTrainLog.setCmdPath(path);
+            tabTrainLogService.save(tabTrainLog);
+
+        }
+
+    }
+
 
     /**
      * 把识别分组写入到txt
@@ -584,6 +842,26 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
 
         return "未找到";
     }
+
+    public String getLogPath11(String cmd){
+
+        // 去掉 ANSI 颜色码
+        String inputcmd = cmd.replaceAll("\u001B\\[[;\\d]*m", "").trim();
+        if(inputcmd.indexOf("Results")>-1){
+
+            String keyword = "Results saved to ";
+            int index = inputcmd.indexOf(keyword);
+            if (index != -1) {
+                String path = inputcmd.substring(index + keyword.length()).trim();
+                log.info("【11-Path的结果集数据】{}",path);
+                // 输出: /home/yolov11/ultralytics/runs/detect/train5
+                return path;
+            }
+
+        }
+
+        return "未找到";
+    }
     public String getLogEpochs(String cmd){
 
         String inputcmd=cmd.trim(); //先去首尾空格
@@ -596,6 +874,20 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
             log.info("【Epochs的结果集数据】{}",inputcmd);
             int start=inputcmd.lastIndexOf(":");
             return inputcmd.substring(start+1).replaceAll(" ","");
+        }
+
+        return "未找到";
+    }
+    public String getLogEpochs11(String cmd){
+
+        String inputcmd=cmd.trim(); //先去首尾空格
+
+
+        if(inputcmd.indexOf("epochs")>-1){
+
+            log.info("【Epochs的结果集数据】{}",inputcmd);
+            String result = inputcmd.substring(0, inputcmd.indexOf("epochs")).trim();
+            return result;
         }
 
         return "未找到";
@@ -733,7 +1025,45 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
             e.printStackTrace();
         }
     }
+    public  static void sendCocoYaml11(TabTrainPython tabTrainPython,TabModelTry tabModelTry){
+        // 定义文件路径
+        String basePath = tabTrainPython.getPyPath()+"/wgdata/data";
+        String trainPath = basePath + "/train.txt";
+        String valPath = basePath + "/val.txt";
+        String testPath = basePath + "/test.txt";
+        String configPath = tabTrainPython.getPyPath() + "/config.yaml";
+        String nc=tabModelTry.getTxtInfo();
+        String [] c=nc.split(",");
+        String d="";
+        for (String b:c) {
+            d += "'" +b + "'," ;
+        }
+        // 创建数据目录
+        File dataDir = new File(basePath);
+        if (!dataDir.exists()) {
+            dataDir.mkdirs(); // 如果目录不存在，创建目录
+        }
 
+        // 需要写入文件的内容
+        String path = "path: " + basePath;
+        String trainContent = "train: " + trainPath;
+        String valContent = "val: " + valPath;
+        String testContent = "test: " + testPath;
+
+        String configContent = path+"\n"+trainContent+"\n"+valContent+"\n"+testContent+"\n"+"nc: "+c.length+"\n" + "# Classes\n" + "names: ["+d.substring(0,d.length()-1)+"]";
+
+        // 写入文件
+        try {
+
+            // 写入 config
+            writeToFile(configPath, configContent);
+
+            log.info("【{}/config.yaml文件生成成功:{}】",basePath,configPath);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
     // 写入文件的辅助方法
     private static void writeToFile(String filePath, String content) throws IOException {
         File file = new File(filePath);

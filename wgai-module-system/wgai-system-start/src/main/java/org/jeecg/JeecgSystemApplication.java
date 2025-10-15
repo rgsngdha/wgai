@@ -1,9 +1,12 @@
 package org.jeecg;
 
+import ai.onnxruntime.OrtEnvironment;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.bytedeco.ffmpeg.global.avutil;
 import org.jeecg.common.util.oConvertUtils;
 import org.opencv.core.Core;
+import org.opencv.dnn.Dnn;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -36,7 +39,10 @@ public class JeecgSystemApplication extends SpringBootServletInitializer {
 
     public static void main(String[] args) throws UnknownHostException {
        // System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
-
+// 在方法开始时添加，设置全局FFmpeg日志级别
+//        System.setProperty("org.bytedeco.javacpp.logger.debug", "false");
+//        System.setProperty("org.bytedeco.ffmpeg.logger", "quiet");
+       avutil.av_log_set_level(avutil.AV_LOG_QUIET);
        // System.load("C:\\JAVAAI\\opencv\\build\\java\\x64\\opencv_java481.dll");
         ConfigurableApplicationContext application = SpringApplication.run(JeecgSystemApplication.class, args);
         Environment env = application.getEnvironment();
@@ -45,7 +51,7 @@ public class JeecgSystemApplication extends SpringBootServletInitializer {
         String path = oConvertUtils.getString(env.getProperty("server.servlet.context-path"));
         String opencvpath = env.getProperty("opencv");
         String audiopath = env.getProperty("audio.dll");
-
+        Integer numThread = Integer.valueOf(env.getProperty("numThread"));
 
         log.info("\n----------------------------------------------------------\n\t" +
                 "Application Jeecg-Boot is running! Access URLs:\n\t" +
@@ -61,8 +67,14 @@ public class JeecgSystemApplication extends SpringBootServletInitializer {
                 File opencv=new File(opencvList[i]);
                 if(opencv.exists()){
                     System.load(opencvList[i]);
-                   // log.info(Core.getBuildInformation());
-                    log.info("opencv加载成功");
+                    // 设置OpenCV使用的CPU线程数
+                    org.opencv.core.Core.setNumThreads(numThread); // 根据CPU核数调整
+                    // 启用OpenCV并行处理
+                    org.opencv.core.Core.setUseOptimized(true);
+
+                    log.info(Core.getBuildInformation());
+                    log.info("[opencv加载成功]:{}",opencvList[i]);
+                    log.info("[OpenCV优化配置] 线程数: {}, 优化: enabled",numThread);
                     break;
                 }else{
                     log.error("opencv文件不存在！请检查地址是否正确 或 是否编译opencv");
@@ -76,13 +88,16 @@ public class JeecgSystemApplication extends SpringBootServletInitializer {
                 File opencv=new File(audiopathList[i]);
                 if(opencv.exists()){
                     System.load(audiopathList[i]);
-                    log.info("audio加载成功");
+                    log.info("[audio加载成功]:{}",audiopathList[i]);
                     break;
                 }else{
-                    log.error("audio文件不存在！请检查地址是否正确 或 是否编译audio");
+                    log.error("[audio文件不存在！请检查地址是否正确 或 是否编译audio]");
                 }
             }
         }
+//        System.setProperty("onnxruntime.native." + System.getProperty("os.name"),
+//                "C:\\Users\\Administrator\\AppData\\Local\\Temp\\onnxruntime-java152680534200004934\\onnxruntime.dll");
+        log.info("[ONNX支持的配置：]: " + OrtEnvironment.getAvailableProviders());
 
     }
 

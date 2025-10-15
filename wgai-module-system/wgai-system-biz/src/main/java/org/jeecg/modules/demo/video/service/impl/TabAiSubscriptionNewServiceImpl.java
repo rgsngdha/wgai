@@ -1,5 +1,7 @@
 package org.jeecg.modules.demo.video.service.impl;
 
+
+import ai.onnxruntime.*;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -18,11 +20,17 @@ import org.jeecg.modules.demo.video.mapper.TabAiVideoSettingMapper;
 import org.jeecg.modules.demo.video.service.ITabAiSubscriptionNewService;
 
 import org.jeecg.modules.demo.video.util.*;
+import org.jeecg.modules.demo.video.util.onnx.VideoReadPicNewThreeTwoOnnx;
+import org.jeecg.modules.demo.video.util.onnx.VideoReadPicOnnxNew;
+import org.jeecg.modules.demo.video.util.reture.retureBoxInfo;
 import org.jeecg.modules.tab.AIModel.NetPush;
+import org.jeecg.modules.tab.AIModel.OnnxModelWrapper;
 import org.jeecg.modules.tab.entity.TabAiModel;
 import org.jeecg.modules.tab.mapper.TabAiModelMapper;
+import org.opencv.core.Mat;
 import org.opencv.dnn.Dnn;
 import org.opencv.dnn.Net;
+import org.opencv.imgcodecs.Imgcodecs;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -36,10 +44,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,26 +60,24 @@ import java.util.concurrent.Executors;
 @Service
 public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscriptionNewMapper, TabAiSubscriptionNew> implements ITabAiSubscriptionNewService {
 
+    private static final ConcurrentHashMap<String, Net> GLOBAL_NET_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, OrtSession> GLOBAL_NET_CACHEOnnx = new ConcurrentHashMap<>();
+    private static final Map<String, OnnxModelWrapper> GLOBAL_NET_CACHE_ONNX = new ConcurrentHashMap<>();
     @Autowired
     TabAiVideoSettingMapper tabAiVideoSettingMapper;
-
     @Autowired
     TabAiModelMapper tabAiModelMapper;
-
     @Autowired
     TabAiBaseServiceImpl tabAiBaseService;
-
     @Autowired
     TabVideoUtilServiceImpl tabVideoUtilServiceImpl;
-
     @Autowired
     RedisTemplate redisTemplate;
-
     @Value("${jeecg.path.upload}")
     private String upLoadPath;
-
     @Value("${cameraNum}")
     private Integer cameraNum;
+
     @Override
     public void startAi(TabAiSubscriptionNew tabAiSubscriptionNew)  {
         try {
@@ -91,32 +94,73 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
             if(tabAiVideoSettingList.size()>0){ //当前不为空
                 for (TabAiVideoSetting tabAiVideoSetting:tabAiVideoSettingList) {
                     NetPush allPush=new NetPush();
+                    TabVideoUtil tabVideoUtil=new TabVideoUtil();
+                    if(tabAiVideoSetting.getIsBy()!=null&&tabAiVideoSetting.getIsBy()==0){//0开启 1为开启
+                        tabVideoUtil=tabVideoUtilServiceImpl.getOne(new QueryWrapper<TabVideoUtil>().eq("id",tabAiVideoSetting.getId()));
+                        log.info("开启区域入侵识别{}-{}",tabAiSubscriptionNew.getName(),tabVideoUtil);
+
+                    }else{
+                        log.info("未开启区域入侵识别{}",tabAiSubscriptionNew.getName());
+                    }
+
                     TabAiModelNew tabAiModelNew=new TabAiModelNew();
                     if(tabAiVideoSetting.getIsBefor().equals("0")){ //0为有前置需求
                         List<NetPush>  BeforNetPushList =new ArrayList<>();
 
                         //----------------前置----------------
                         TabAiModel before=getTabAiModelInfo(tabAiModelMapper.selectById(tabAiVideoSetting.getModelId()),tabAiVideoSetting.getModelTxt());
-                        Net beforeNet=getNetModel( tabAiSubscriptionNew, before);
+
                         NetPush beforePush=new NetPush();
+
+                        beforePush.setIsBy(tabAiVideoSetting.getIsBy()==null?1:tabAiVideoSetting.getIsBy()); //0开启 1未开启 默认不开启
+                        beforePush.setTabVideoUtil(tabVideoUtil);
+                        beforePush.setDifyType(tabAiVideoSetting.getDifyType()==null?1:tabAiVideoSetting.getDifyType()); //默认图像识别
+                        beforePush.setIsBeforZoom(tabAiVideoSetting.getIsBeforZoom()==null?1:tabAiVideoSetting.getIsBeforZoom()); //不开启放大
+
                         beforePush.setId(tabAiVideoSetting.getId());
-                        beforePush.setIsBefor(1);
+                        beforePush.setIsBefor(0);
                         beforePush.setBeforText(tabAiVideoSetting.getModelTxt());
                         beforePush.setClaseeNames(Files.readAllLines(Paths.get(before.getAiNameName())));
-                        beforePush.setNet(beforeNet);
+                        if(tabAiSubscriptionNew.getModelJmType()!=null&&tabAiSubscriptionNew.getModelJmType()==20){//onnx推理
+                            OnnxModelWrapper endNet=getOnnxModel( tabAiSubscriptionNew, before);
+                            beforePush.setSession(endNet.getSession());
+                            beforePush.setEnv(endNet.getEnv());
+
+                        }else{ //cv推理
+                            Net beforeNet=getNetModel( tabAiSubscriptionNew, before);
+                            beforePush.setNet(beforeNet);
+                        }
                         beforePush.setModelType(before.getSpareOne());
                         beforePush.setTabAiModel(before);
                         beforePush.setUploadPath(upLoadPath);
                         BeforNetPushList.add(beforePush);
                         //----------------后置---------------
                         TabAiModel theEnd=getTabAiModelInfo(tabAiModelMapper.selectById(tabAiVideoSetting.getNextMode()),"");
-                        Net endNet=getNetModel( tabAiSubscriptionNew, theEnd);
+
                         NetPush endPush=new NetPush();
                         endPush.setId(tabAiVideoSetting.getId());
-                        endPush.setIsBefor(1);
+                        endPush.setIsBefor(0);
                         endPush.setBeforText("");
+
+                        endPush.setIsBy(tabAiVideoSetting.getIsBy()==null?1:tabAiVideoSetting.getIsBy()); //0开启 1未开启 默认不开启
+                        endPush.setTabVideoUtil(tabVideoUtil);
+                        endPush.setDifyType(tabAiVideoSetting.getDifyType()==null?1:tabAiVideoSetting.getDifyType()); //默认图像识别
+                        endPush.setIsBeforZoom(tabAiVideoSetting.getIsBeforZoom()==null?1:tabAiVideoSetting.getIsBeforZoom()); //1不开启放大 0开启
+
                         endPush.setClaseeNames(Files.readAllLines(Paths.get(theEnd.getAiNameName())));
-                        endPush.setNet(endNet);
+                        if(tabAiSubscriptionNew.getModelJmType()!=null&&tabAiSubscriptionNew.getModelJmType()==20){//onnx推理
+
+
+                            OnnxModelWrapper endNet=getOnnxModel( tabAiSubscriptionNew, theEnd);
+                            endPush.setSession(endNet.getSession());
+                            endPush.setEnv(endNet.getEnv());
+
+                        }else{ //cv推理
+                            Net endNet=getNetModel( tabAiSubscriptionNew, theEnd);
+                            endPush.setNet(endNet);
+                        }
+
+
                         endPush.setModelType(theEnd.getSpareOne());
                         endPush.setTabAiModel(theEnd);
                         endPush.setUploadPath(upLoadPath);
@@ -126,20 +170,34 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
                         endPush.setNoDifText(StringUtils.isEmpty(tabAiVideoSetting.getNoDifText())==true?"":tabAiVideoSetting.getNoDifText());
                         BeforNetPushList.add(endPush);
 
-                        allPush.setIsBefor(1);
+                        allPush.setIsBefor(0);
                         allPush.setListNetPush(BeforNetPushList);
                     }else { //没有
                         log.info("[当前配置路径]{}",upLoadPath);
                         TabAiModel tabAiModel=getTabAiModelInfo(tabAiModelMapper.selectById(tabAiVideoSetting.getNextMode()),"");
-                        Net endNet=getNetModel( tabAiSubscriptionNew, tabAiModel);
+
                         allPush.setId(tabAiVideoSetting.getId());
                         allPush.setBeforText("");
                         allPush.setClaseeNames(Files.readAllLines(Paths.get(tabAiModel.getAiNameName())));
-                        allPush.setNet(endNet);
+                        if(tabAiSubscriptionNew.getModelJmType()!=null&&tabAiSubscriptionNew.getModelJmType()==20){//onnx推理
+
+                            OnnxModelWrapper endNet=getOnnxModel( tabAiSubscriptionNew, tabAiModel);
+                            allPush.setSession(endNet.getSession());
+                            allPush.setEnv(endNet.getEnv());
+                        }else{ //cv推理
+                            Net endNet=getNetModel( tabAiSubscriptionNew, tabAiModel);
+                            allPush.setNet(endNet);
+                        }
+
+                        allPush.setIsBy(tabAiVideoSetting.getIsBy()==null?1:tabAiVideoSetting.getIsBy()); //0开启 1未开启 默认不开启
+                        allPush.setTabVideoUtil(tabVideoUtil);
+                        allPush.setDifyType(tabAiVideoSetting.getDifyType()==null?1:tabAiVideoSetting.getDifyType()); //默认图像识别
+                        allPush.setIsBeforZoom(tabAiVideoSetting.getIsBeforZoom()==null?1:tabAiVideoSetting.getIsBeforZoom()); //1不开启放大 0开启
+
                         allPush.setTabAiModel(tabAiModel);
                         allPush.setModelType(tabAiModel.getSpareOne());
                         allPush.setUploadPath(upLoadPath);
-                        allPush.setIsBefor(0);
+                        allPush.setIsBefor(1);
                         allPush.setIsFollow(tabAiVideoSetting.getIsFollow()==null?1:tabAiVideoSetting.getIsFollow());
                         allPush.setWarinngMethod(tabAiVideoSetting.getWarinngMethod()==null?0:tabAiVideoSetting.getWarinngMethod());
                         allPush.setNoDifText(StringUtils.isEmpty(tabAiVideoSetting.getNoDifText())==true?"未定义":tabAiVideoSetting.getNoDifText());
@@ -156,14 +214,14 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
             //   tabAiSubscriptionNew.setTabAiModelNewList(tabAiModelNewsList);
             tabAiSubscriptionNew.setRunState(1);
 
-            if(tabAiSubscriptionNew.getIsBy()==0){//0开启 1为开启
-
-                tabAiSubscriptionNew.setTabVideoUtil(tabVideoUtilServiceImpl.getOne(new QueryWrapper<TabVideoUtil>().eq("video_id",tabAiSubscriptionNew.getId())));
-                log.info("开启区域入侵识别{}-{}",tabAiSubscriptionNew.getName(),tabAiSubscriptionNew.getTabVideoUtil().getId());
-
-            }else{
-                log.info("未开启区域入侵识别{}",tabAiSubscriptionNew.getName());
-            }
+//            if(tabAiSubscriptionNew.getIsBy()==0){//0开启 1为开启
+//
+//                tabAiSubscriptionNew.setTabVideoUtil(tabVideoUtilServiceImpl.getOne(new QueryWrapper<TabVideoUtil>().eq("video_id",tabAiSubscriptionNew.getId())));
+//                log.info("开启区域入侵识别{}-{}",tabAiSubscriptionNew.getName(),tabAiSubscriptionNew.getTabVideoUtil().getId());
+//
+//            }else{
+//                log.info("未开启区域入侵识别{}",tabAiSubscriptionNew.getName());
+//            }
 
             this.updateById(tabAiSubscriptionNew);
             tabAiSubscriptionNew.setNetPushList(NetPushList);
@@ -176,19 +234,39 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
 
             //判断取流方式
            //
-            if(cameraNum==null||cameraNum<32){
-                log.info("[小于32路直接启动]");
-                executor.submit(new VideoReadPicNew(tabAiSubscriptionNew,redisTemplate));
-            }else{
-                log.info("[大于32路视频 -30s间隔启动]");
-                Timer timer = new Timer();
-                timer.schedule(new TimerTask() {
-                    public void run() {
-                        executor.submit(new VideoReadPicNewThreeTwo(tabAiSubscriptionNew, redisTemplate));
+            if(tabAiSubscriptionNew.getModelJmType()!=null&&tabAiSubscriptionNew.getModelJmType()==20){
+                log.info("onnx启动推理");
+                if(cameraNum==null||cameraNum<32){
+                    log.info("[小于32路直接启动]");
+                    executor.submit(new VideoReadPicOnnxNew(tabAiSubscriptionNew,redisTemplate));
+                }else{
+                    log.info("[大于32路视频 -30s间隔启动]");
+                    Timer timer = new Timer();
+                    timer.schedule(new TimerTask() {
+                        public void run() {
+                            executor.submit(new VideoReadPicNewThreeTwoOnnx(tabAiSubscriptionNew, redisTemplate));
 
-                    }
-                },  30000); // 30秒间隔
+                        }
+                    },  30000); // 30秒间隔
+                }
+
+            }else{
+                log.info("opencv dnn启动推理");
+                if(cameraNum==null||cameraNum<32){
+                    log.info("[小于32路直接启动]");
+                    executor.submit(new VideoReadPicNew(tabAiSubscriptionNew,redisTemplate));
+                }else{
+                    log.info("[大于32路视频 -30s间隔启动]");
+                    Timer timer = new Timer();
+                    timer.schedule(new TimerTask() {
+                        public void run() {
+                            executor.submit(new VideoReadPicNewThreeTwo(tabAiSubscriptionNew, redisTemplate));
+
+                        }
+                    },  30000); // 30秒间隔
+                }
             }
+
 
           //  executor.submit(new VideoReadPicNewOptimized(tabAiSubscriptionNew,redisTemplate));
 
@@ -213,8 +291,12 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
         return  tabAiModel;
     }
 
-    private static final ConcurrentHashMap<String, Net> GLOBAL_NET_CACHE = new ConcurrentHashMap<>();
-
+    /***
+     * 获取Net内容
+     * @param tabAiSubscriptionNew
+     * @param tabAiModel
+     * @return
+     */
     public Net getNetModel(TabAiSubscriptionNew tabAiSubscriptionNew,TabAiModel tabAiModel){
 
         Net net= GLOBAL_NET_CACHE.get(tabAiSubscriptionNew.getId()+"_"+tabAiModel.getId());
@@ -250,7 +332,49 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
         return net;
     }
 
+    // 3. 修改 getOnnxModel 方法
+    public OnnxModelWrapper getOnnxModel(TabAiSubscriptionNew tabAiSubscriptionNew, TabAiModel tabAiModel) {
+        String cacheKey = tabAiSubscriptionNew.getId() + "_" + tabAiModel.getId();
+        OnnxModelWrapper wrapper = GLOBAL_NET_CACHE_ONNX.get(cacheKey);
 
+        if (wrapper == null) {
+            synchronized (this) { // 添加同步锁防止并发创建
+                wrapper = GLOBAL_NET_CACHE_ONNX.get(cacheKey);
+                if (wrapper == null) {
+                    try {
+                        OrtEnvironment env = OrtEnvironment.getEnvironment();
+                        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+
+                        if (tabAiSubscriptionNew.getEventTypes().equals("1")) { // GPU
+                            options.addCUDA();
+                            log.info("[ONNX推理规则：GPU]");
+                        } else if (tabAiSubscriptionNew.getEventTypes().equals("2")) { // CPU
+                            options.setIntraOpNumThreads(1); // 每个session单算子只用1核
+                            options.setInterOpNumThreads(1);
+                            options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL);
+                            options.addCPU(true);
+
+                            log.info("[ONNX推理规则：CPU]");
+                        }
+
+                        System.out.println(OrtEnvironment.getEnvironment().getVersion());
+
+                        OrtSession session = env.createSession(tabAiModel.getAiWeights(), options);
+                        wrapper = new OnnxModelWrapper(env, session);
+                        GLOBAL_NET_CACHE_ONNX.put(cacheKey, wrapper);
+                        log.info("【ONNX模型加载成功并缓存】key: {}", cacheKey);
+                    } catch (Exception ex) {
+                        log.error("【ONNX模型加载失败】", ex);
+                        throw new RuntimeException("ONNX模型加载失败", ex);
+                    }
+                }
+            }
+        } else {
+            log.info("【已存在ONNX模型，直接返回】key: {}", cacheKey);
+        }
+
+        return wrapper;
+    }
 
 
     @Override
@@ -271,7 +395,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
     public Result<String> getVideoPic(String  id) {
 
         String outputPath = upLoadPath+ File.separator ;
-        String picName=id+"jpg";
+        String picName=id+".jpg";
         try {
             TabAiSubscriptionNew tabAiSubscriptionNew1=this.getById(id);
             FFmpegFrameGrabber  grabber= createOptimizedGrabber(tabAiSubscriptionNew1);
@@ -300,6 +424,234 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
         return Result.OK(picName);
     }
 
+    @Override
+    public Result<?> test(String id) {
+        try {
+
+            TabAiVideoSetting tabAiVideoSetting=tabAiVideoSettingMapper.selectById(id);
+            TabAiSubscriptionNew tabAiSubscriptionNew=this.getById(tabAiVideoSetting.getSubId());
+            log.info("[当前配置路径]{}",upLoadPath);
+
+            //刷新缓存
+            tabAiBaseService.SendRedisBase();
+            //写作开关
+            redisTemplate.opsForValue().set(tabAiSubscriptionNew.getId()+"newRunPush",true);
+            RedisCacheHolder.put(tabAiSubscriptionNew.getId()+"newRunPush",true);
+            List<NetPush> NetPushList=new ArrayList<>();
+            //查询子项
+
+
+                    NetPush allPush=new NetPush();
+                    TabVideoUtil tabVideoUtil=new TabVideoUtil();
+                    if(tabAiVideoSetting.getIsBy()!=null&&tabAiVideoSetting.getIsBy()==0){//0开启 1为开启
+                        tabVideoUtil=tabVideoUtilServiceImpl.getOne(new QueryWrapper<TabVideoUtil>().eq("id",tabAiVideoSetting.getId()));
+                        log.info("开启区域入侵识别{}-{}",tabAiSubscriptionNew.getName(),tabVideoUtil);
+
+                    }else{
+                        log.info("未开启区域入侵识别{}",tabAiSubscriptionNew.getName());
+                    }
+
+                    TabAiModelNew tabAiModelNew=new TabAiModelNew();
+                    if(tabAiVideoSetting.getIsBefor().equals("0")){ //0为有前置需求
+                        List<NetPush>  BeforNetPushList =new ArrayList<>();
+
+                        //----------------前置----------------
+                        TabAiModel before=getTabAiModelInfo(tabAiModelMapper.selectById(tabAiVideoSetting.getModelId()),tabAiVideoSetting.getModelTxt());
+
+                        NetPush beforePush=new NetPush();
+
+                        beforePush.setIsBy(tabAiVideoSetting.getIsBy()==null?1:tabAiVideoSetting.getIsBy()); //0开启 1未开启 默认不开启
+                        beforePush.setTabVideoUtil(tabVideoUtil);
+                        beforePush.setDifyType(tabAiVideoSetting.getDifyType()==null?1:tabAiVideoSetting.getDifyType()); //默认图像识别
+                        beforePush.setIsBeforZoom(tabAiVideoSetting.getIsBeforZoom()==null?1:tabAiVideoSetting.getIsBeforZoom()); //不开启放大
+
+                        beforePush.setId(tabAiVideoSetting.getId());
+                        beforePush.setIsBefor(0);
+                        beforePush.setBeforText(tabAiVideoSetting.getModelTxt());
+                        beforePush.setClaseeNames(Files.readAllLines(Paths.get(before.getAiNameName())));
+                        if(tabAiSubscriptionNew.getModelJmType()!=null&&tabAiSubscriptionNew.getModelJmType()==20){//onnx推理
+                            OnnxModelWrapper endNet=getOnnxModel( tabAiSubscriptionNew, before);
+                            beforePush.setSession(endNet.getSession());
+                            beforePush.setEnv(endNet.getEnv());
+
+                        }else{ //cv推理
+                            Net beforeNet=getNetModel( tabAiSubscriptionNew, before);
+                            beforePush.setNet(beforeNet);
+                        }
+                        beforePush.setModelType(before.getSpareOne());
+                        beforePush.setTabAiModel(before);
+                        beforePush.setUploadPath(upLoadPath);
+                        BeforNetPushList.add(beforePush);
+                        //----------------后置---------------
+                        TabAiModel theEnd=getTabAiModelInfo(tabAiModelMapper.selectById(tabAiVideoSetting.getNextMode()),"");
+
+                        NetPush endPush=new NetPush();
+                        endPush.setId(tabAiVideoSetting.getId());
+                        endPush.setIsBefor(0);
+                        endPush.setBeforText("");
+
+                        endPush.setIsBy(tabAiVideoSetting.getIsBy()==null?1:tabAiVideoSetting.getIsBy()); //0开启 1未开启 默认不开启
+                        endPush.setTabVideoUtil(tabVideoUtil);
+                        endPush.setDifyType(tabAiVideoSetting.getDifyType()==null?1:tabAiVideoSetting.getDifyType()); //默认图像识别
+                        endPush.setIsBeforZoom(tabAiVideoSetting.getIsBeforZoom()==null?1:tabAiVideoSetting.getIsBeforZoom()); //1不开启放大 0开启
+
+                        endPush.setClaseeNames(Files.readAllLines(Paths.get(theEnd.getAiNameName())));
+                        if(tabAiSubscriptionNew.getModelJmType()!=null&&tabAiSubscriptionNew.getModelJmType()==20){//onnx推理
+
+
+                            OnnxModelWrapper endNet=getOnnxModel( tabAiSubscriptionNew, theEnd);
+                            endPush.setSession(endNet.getSession());
+                            endPush.setEnv(endNet.getEnv());
+
+                        }else{ //cv推理
+                            Net endNet=getNetModel( tabAiSubscriptionNew, theEnd);
+                            endPush.setNet(endNet);
+                        }
+
+
+                        endPush.setModelType(theEnd.getSpareOne());
+                        endPush.setTabAiModel(theEnd);
+                        endPush.setUploadPath(upLoadPath);
+                        endPush.setIsFollow(tabAiVideoSetting.getIsFollow()==null?1:tabAiVideoSetting.getIsFollow());
+                        endPush.setFollowPosition(tabAiVideoSetting.getFollowPosition()==null?1:tabAiVideoSetting.getFollowPosition());
+                        endPush.setWarinngMethod(tabAiVideoSetting.getWarinngMethod()==null?0:tabAiVideoSetting.getWarinngMethod());
+                        endPush.setNoDifText(StringUtils.isEmpty(tabAiVideoSetting.getNoDifText())==true?"":tabAiVideoSetting.getNoDifText());
+                        BeforNetPushList.add(endPush);
+
+                        allPush.setIsBefor(0);
+                        allPush.setListNetPush(BeforNetPushList);
+                    }else { //没有
+                        log.info("[当前配置路径]{}",upLoadPath);
+                        TabAiModel tabAiModel=getTabAiModelInfo(tabAiModelMapper.selectById(tabAiVideoSetting.getNextMode()),"");
+
+                        allPush.setId(tabAiVideoSetting.getId());
+                        allPush.setBeforText("");
+                        allPush.setClaseeNames(Files.readAllLines(Paths.get(tabAiModel.getAiNameName())));
+                        if(tabAiSubscriptionNew.getModelJmType()!=null&&tabAiSubscriptionNew.getModelJmType()==20){//onnx推理
+
+                            OnnxModelWrapper endNet=getOnnxModel( tabAiSubscriptionNew, tabAiModel);
+                            allPush.setSession(endNet.getSession());
+                            allPush.setEnv(endNet.getEnv());
+                        }else{ //cv推理
+                            Net endNet=getNetModel( tabAiSubscriptionNew, tabAiModel);
+                            allPush.setNet(endNet);
+                        }
+
+                        allPush.setIsBy(tabAiVideoSetting.getIsBy()==null?1:tabAiVideoSetting.getIsBy()); //0开启 1未开启 默认不开启
+                        allPush.setTabVideoUtil(tabVideoUtil);
+                        allPush.setDifyType(tabAiVideoSetting.getDifyType()==null?1:tabAiVideoSetting.getDifyType()); //默认图像识别
+                        allPush.setIsBeforZoom(tabAiVideoSetting.getIsBeforZoom()==null?1:tabAiVideoSetting.getIsBeforZoom()); //1不开启放大 0开启
+
+                        allPush.setTabAiModel(tabAiModel);
+                        allPush.setModelType(tabAiModel.getSpareOne());
+                        allPush.setUploadPath(upLoadPath);
+                        allPush.setIsBefor(1);
+                        allPush.setIsFollow(tabAiVideoSetting.getIsFollow()==null?1:tabAiVideoSetting.getIsFollow());
+                        allPush.setWarinngMethod(tabAiVideoSetting.getWarinngMethod()==null?0:tabAiVideoSetting.getWarinngMethod());
+                        allPush.setNoDifText(StringUtils.isEmpty(tabAiVideoSetting.getNoDifText())==true?"未定义":tabAiVideoSetting.getNoDifText());
+
+                    }
+
+                    NetPushList.add(allPush);
+
+            tabAiSubscriptionNew.setRunState(1);
+
+
+            tabAiSubscriptionNew.setNetPushList(NetPushList);
+
+
+            log.info("[当前开始执行推理]{}-共{}路视频",tabAiSubscriptionNew.getName(),cameraNum);
+            //开始取流
+
+            //Executors.newCachedThreadPool(4);
+
+            //判断取流方式
+            //
+            String imgPath="D:\\opt\\upFiles\\debug\\test\\end2025092510555799858.jpg";
+            if(tabAiSubscriptionNew.getModelJmType()!=null&&tabAiSubscriptionNew.getModelJmType()==20){
+                identifyTypeNewOnnx identifyTypeNewOnnx=new  identifyTypeNewOnnx();
+                Mat mat = Imgcodecs.imread(imgPath);
+                retureBoxInfo validationPassed=null;
+
+                if (NetPushList.get(0).getIsBefor() == 0) {  //有前置无前置
+                    int a=0;
+                    for (NetPush netPush : NetPushList.get(0).getListNetPush()) {
+                        if(a==0){
+
+                         validationPassed= identifyTypeNewOnnx.detectObjectsV5Onnx(tabAiSubscriptionNew, mat, netPush,redisTemplate);
+                        a++;
+                        }else{
+                            if(netPush.getDifyType()==2){
+                                identifyTypeNewOnnx.detectObjectsDifyOnnxV5Pose(tabAiSubscriptionNew, mat, netPush, redisTemplate,validationPassed.getInfoList());
+                            }else{
+                                if(netPush.getIsBeforZoom()==0){//开启区域放大
+                                    identifyTypeNewOnnx.detectObjectsDifyOnnxV5WithROI(tabAiSubscriptionNew, mat, netPush, redisTemplate,validationPassed.getInfoList());
+                                }else{
+                                    identifyTypeNewOnnx.detectObjectsDifyOnnxV5(tabAiSubscriptionNew, mat, netPush, redisTemplate,validationPassed.getInfoList());
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    if(NetPushList.get(0).getDifyType()==2){
+                        identifyTypeNewOnnx.detectObjectsDifyOnnxV5Pose(tabAiSubscriptionNew, mat, NetPushList.get(0), redisTemplate,validationPassed.getInfoList());
+                    }else{
+                        if(NetPushList.get(0).getIsBeforZoom()==0){//开启区域放大
+                            identifyTypeNewOnnx.detectObjectsDifyOnnxV5WithROI(tabAiSubscriptionNew, mat, NetPushList.get(0), redisTemplate,validationPassed.getInfoList());
+                        }else{
+                            identifyTypeNewOnnx.detectObjectsDifyOnnxV5(tabAiSubscriptionNew, mat, NetPushList.get(0), redisTemplate,validationPassed.getInfoList());
+                        }
+                    }
+                }
+
+            }else{
+                identifyTypeNew identifyTypeAll=new  identifyTypeNew();
+                Mat mat = Imgcodecs.imread(imgPath);
+                retureBoxInfo validationPassed=null;
+                if (NetPushList.get(0).getIsBefor() == 0) {  //有前置无前置
+                    int a=0;
+                    for (NetPush netPush : NetPushList.get(0).getListNetPush()) {
+                        if(a==0){
+
+                            validationPassed= identifyTypeAll.detectObjectsV5(tabAiSubscriptionNew, mat,netPush.getNet(), netPush.getClaseeNames(),netPush,redisTemplate);
+                            a++;
+                        }else{
+                            if(netPush.getDifyType()==2){
+                                identifyTypeAll.detectObjectsDifyV5Pose(tabAiSubscriptionNew, mat, netPush, redisTemplate,validationPassed.getInfoList());
+                            }else{
+                                if(netPush.getIsBeforZoom()==0){//开启区域放大
+                                    identifyTypeAll.detectObjectsDifyV5WithROI(tabAiSubscriptionNew, mat, netPush, redisTemplate,validationPassed.getInfoList());
+                                }else{
+                                    identifyTypeAll.detectObjectsDifyV5(tabAiSubscriptionNew, mat, netPush, redisTemplate,validationPassed.getInfoList());
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    if(NetPushList.get(0).getDifyType()==2){
+                        identifyTypeAll.detectObjectsDifyV5Pose(tabAiSubscriptionNew, mat, NetPushList.get(0), redisTemplate,validationPassed.getInfoList());
+                    }else{
+                        if(NetPushList.get(0).getIsBeforZoom()==0){//开启区域放大
+                            identifyTypeAll.detectObjectsDifyV5WithROI(tabAiSubscriptionNew, mat, NetPushList.get(0), redisTemplate,validationPassed.getInfoList());
+                        }else{
+                            identifyTypeAll.detectObjectsDifyV5(tabAiSubscriptionNew, mat, NetPushList.get(0), redisTemplate,validationPassed.getInfoList());
+                        }
+                    }
+                }
+            }
+
+
+            //  executor.submit(new VideoReadPicNewOptimized(tabAiSubscriptionNew,redisTemplate));
+
+
+            //   executor.submit(new VideoReadPicNewWithDisruptor(tabAiSubscriptionNew,redisTemplate));
+        }catch (IOException ex  ){
+            ex.printStackTrace();
+            log.error("[当前错误读取文件错误]");
+        }
+
+        return Result.OK("kaish");
+    }
 
 
     public FFmpegFrameGrabber createOptimizedGrabber(TabAiSubscriptionNew tabAiSubscriptionNew) throws Exception {

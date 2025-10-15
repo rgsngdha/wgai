@@ -30,7 +30,7 @@ public class retureBoxInfo {
 
     /***
      *
-     * @param infoList 前置模型识别到的x坐标
+     * @param infoList 前置模型识别到的x坐标-原始图片坐标 非640*640
      * @param infoList 前置模型识别到的x坐标
      * @param infoList 前置模型识别到的宽度
      * @param infoList 前置模型识别到的高度

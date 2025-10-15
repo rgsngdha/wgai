@@ -110,4 +110,16 @@ public class TabAiVideoSetting implements Serializable {
     @ApiModelProperty(value = "未识别到预警文本")
     private String noDifText;
 
+    @ApiModelProperty(value = "识别方式")
+    @Dict(dicCode = "dify_type")
+    private Integer difyType;
+
+    @Dict(dicCode = "push_static")
+    @ApiModelProperty(value = "是否开启区域识别")
+    private Integer isBy;
+
+
+    @Dict(dicCode = "push_static")
+    @ApiModelProperty(value = "是否跟随前置放大")
+    private Integer isBeforZoom;
 }
