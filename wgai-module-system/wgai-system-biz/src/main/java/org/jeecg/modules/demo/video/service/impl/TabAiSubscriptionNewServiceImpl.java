@@ -22,6 +22,8 @@ import org.jeecg.modules.demo.video.service.ITabAiSubscriptionNewService;
 import org.jeecg.modules.demo.video.util.*;
 import org.jeecg.modules.demo.video.util.batch.PerformanceMonitor;
 import org.jeecg.modules.demo.video.util.batch.VideoReadPicOnnxOptimized;
+import org.jeecg.modules.demo.video.util.batch.batch.BatchInferenceScheduler;
+import org.jeecg.modules.demo.video.util.batch.batch.VideoReadPicOnnxNewBatch;
 import org.jeecg.modules.demo.video.util.onnx.VideoReadPicNewThreeTwoOnnx;
 import org.jeecg.modules.demo.video.util.onnx.VideoReadPicOnnxNew;
 import org.jeecg.modules.demo.video.util.reture.retureBoxInfo;
@@ -74,6 +76,9 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
     TabAiBaseServiceImpl tabAiBaseService;
     @Autowired
     TabVideoUtilServiceImpl tabVideoUtilServiceImpl;
+
+    @Autowired
+    private BatchInferenceScheduler batchScheduler;  // ✅ 注入调度器
     @Autowired
     RedisTemplate redisTemplate;
     @Value("${jeecg.path.upload}")
@@ -83,7 +88,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
     @PostConstruct
     public void init() {
         // 启动性能监控
-        PerformanceMonitor.getInstance().startMonitoring();
+        //PerformanceMonitor.getInstance().startMonitoring();
         log.info("[性能监控已启动]");
     }
     @Override
@@ -247,7 +252,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
                 if(cameraNum==null||cameraNum<32){
                     log.info("[小于32路直接启动]");
                     executor.submit(new VideoReadPicOnnxNew(tabAiSubscriptionNew,redisTemplate));
-                }else{
+                }else if(cameraNum==32){
                     log.info("[大于32路视频 -30s间隔启动]");
                     Timer timer = new Timer();
                     timer.schedule(new TimerTask() {
@@ -256,6 +261,9 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
                             executor.submit(new VideoReadPicOnnxOptimized(tabAiSubscriptionNew, redisTemplate));
                         }
                     },  30000); // 30秒间隔
+                }else{
+                    log.info("[大于64路视频 -批量推送启动]");
+                    executor.submit(new VideoReadPicOnnxNewBatch(tabAiSubscriptionNew, redisTemplate,batchScheduler));
                 }
 
             }else{
@@ -263,7 +271,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
                 if(cameraNum==null||cameraNum<32){
                     log.info("[小于32路直接启动]");
                     executor.submit(new VideoReadPicNew(tabAiSubscriptionNew,redisTemplate));
-                }else{
+                }else if(cameraNum==32){
                     log.info("[大于32路视频 -30s间隔启动]");
                     Timer timer = new Timer();
                     timer.schedule(new TimerTask() {
@@ -272,7 +280,11 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
 
                         }
                     },  30000); // 30秒间隔
+                }else{
+                    log.info("[大于64路视频 -批量推送启动,opencv 不支持]");
+                   // executor.submit(new VideoReadPicOnnxNewBatch(tabAiSubscriptionNew, redisTemplate,batchScheduler));
                 }
+
             }
 
 
@@ -575,7 +587,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
 
             //判断取流方式
             //
-            String imgPath="F:\\360se6\\roi_1_1760316473406_1760316525066.jpg";
+            String imgPath="F:\\360se6\\end2025101921254037489.jpg";
             if(tabAiSubscriptionNew.getModelJmType()!=null&&tabAiSubscriptionNew.getModelJmType()==20){
                 identifyTypeNewOnnx identifyTypeNewOnnx=new  identifyTypeNewOnnx();
                 Mat mat = Imgcodecs.imread(imgPath);

@@ -1397,18 +1397,6 @@ public class AIModelYolo3 {
                                         kpts[j] = detections[5 + j][i];
                                     }
 
-                                    // 🔍 调试输出
-                                    if (debugCount < 3) {
-                                        System.out.println(String.format("\n📊 检测框索引=%d, 置信度=%.4f", i, confidence));
-                                        System.out.println("  前5个关键点数据:");
-                                        for (int k = 0; k < 5; k++) {
-                                            float kx = kpts[k * 3];
-                                            float ky = kpts[k * 3 + 1];
-                                            float visibility = kpts[k * 3 + 2];
-                                            System.out.println(String.format("    关键点%d: x=%.2f, y=%.2f, vis=%.4f",
-                                                    k, kx, ky, visibility));
-                                        }
-                                    }
 
                                     // ✅ 验证关键点有效性
                                     int validCoordCount = 0;
@@ -1458,23 +1446,42 @@ public class AIModelYolo3 {
                                     // ⭐⭐⭐ 关键过滤条件 ⭐⭐⭐
                                     boolean hasValidKeypoints = false;
 
-                                    if (highVisibilityCount >= 5) {
-                                        // 条件1: 关键点必须有合理的分布范围
-                                        boolean hasReasonableSpread = (keypointWidth > 50 && keypointHeight > 100);
+                                    if (highVisibilityCount >= 3) {
 
-                                        // 条件2: 关键点范围应该覆盖边界框的大部分区域
-                                        // 真实人体的关键点应该至少覆盖边界框50%的宽度和60%的高度
-                                        boolean coversEnoughArea = (widthRatio > 0.5 && heightRatio > 0.6);
+                                        // 策略2: 根据边界框大小动态调整阈值
+                                        float minWidth = Math.min(50, width * 0.3f);   // 最小宽度: 50px 或 边界框30%
+                                        float minHeight = Math.min(80, height * 0.4f); // 最小高度: 80px 或 边界框40%
 
-                                        hasValidKeypoints = hasReasonableSpread && coversEnoughArea;
+                                        boolean hasReasonableSpread = (keypointWidth > minWidth && keypointHeight > minHeight);
+
+                                        // 策略3: 降低覆盖率要求，支持更多姿态
+                                        // 宽度覆盖30%，高度覆盖40% 即可认为有效
+                                        boolean coversEnoughArea = (widthRatio > 0.3 && heightRatio > 0.4);
+
+                                        // 策略4: 特殊情况处理 - 如果关键点非常集中但置信度高，也认为有效
+                                        boolean isHighConfidenceCompact = (confidence > 0.7f && highVisibilityCount >= 5);
+
+                                        // 综合判断
+                                        hasValidKeypoints = hasReasonableSpread && (coversEnoughArea || isHighConfidenceCompact);
 
                                         if (debugCount <= 3) {
-                                            System.out.println(String.format("  验证结果: 合理分布=%s, 覆盖充分=%s, 最终=%s",
-                                                    hasReasonableSpread, coversEnoughArea, hasValidKeypoints));
+                                            System.out.println(String.format("  验证结果: 合理分布=%s, 覆盖充分=%s, 高置信紧凑=%s, 最终=%s",
+                                                    hasReasonableSpread, coversEnoughArea, isHighConfidenceCompact, hasValidKeypoints));
                                         }
+
                                     } else {
-                                        if (debugCount <= 3) {
-                                            System.out.println(String.format("  验证结果: 高可见性关键点不足(%d<5)", highVisibilityCount));
+                                        // 策略5: 低可见性但高置信度的兜底方案
+                                        // 如果置信度很高(>0.75)且至少有2个关键点，也可以尝试保留
+                                        if (confidence > 0.75f && validCoordCount >= 2) {
+                                            hasValidKeypoints = true;
+                                            if (debugCount <= 3) {
+                                                System.out.println(String.format("  验证结果: 高置信度兜底通过 (conf=%.2f, valid=%d)",
+                                                        confidence, validCoordCount));
+                                            }
+                                        } else {
+                                            if (debugCount <= 3) {
+                                                System.out.println(String.format("  验证结果: 高可见性关键点不足(%d<3)", highVisibilityCount));
+                                            }
                                         }
                                     }
 

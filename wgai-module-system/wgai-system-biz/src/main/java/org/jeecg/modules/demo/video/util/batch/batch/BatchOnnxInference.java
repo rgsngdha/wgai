@@ -986,4 +986,557 @@ public class BatchOnnxInference {
             warnName += aiBase.getChainName() + ",";
         }
     }
+
+    /**
+     * 批量推理 - 姿态识别模型(Pose Detection)
+     */
+    public static List<Boolean> batchInferencePoseModel(
+            List<Mat> mats,
+            NetPush netPush,
+            List<TabAiSubscriptionNew> pushInfos,
+            List<List<retureBoxInfo>> preResultsList,
+            RedisTemplate redisTemplate) {
+
+        int batchSize = mats.size();
+        List<Boolean> results = new ArrayList<>(batchSize);
+
+        try {
+            // 1. 批量预处理
+            float[] batchInputData = batchPreprocess(mats);
+
+            // 2. 批量ONNX推理
+            List<PoseDetectionResult> detectionResults = runBatchPoseOnnxInference(
+                    netPush.getSession(),
+                    netPush.getEnv(),
+                    batchInputData,
+                    batchSize
+            );
+
+            // 3. 批量后处理 - 姿态分析并推送
+            for (int i = 0; i < batchSize; i++) {
+                boolean success = postProcessPoseModel(
+                        mats.get(i),
+                        detectionResults.get(i),
+                        netPush,
+                        pushInfos.get(i),
+                        preResultsList.get(i),
+                        redisTemplate
+                );
+                results.add(success);
+            }
+
+            long successCount = results.stream().filter(b -> b).count();
+            log.debug("[姿态批量推理完成] 批次大小:{}, 成功:{}", batchSize, successCount);
+
+        } catch (Exception e) {
+            log.error("[姿态批量推理失败]", e);
+            for (int i = 0; i < batchSize; i++) {
+                results.add(false);
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * 批量姿态ONNX推理
+     */
+    private static List<PoseDetectionResult> runBatchPoseOnnxInference(
+            OrtSession session,
+            OrtEnvironment env,
+            float[] batchInputData,
+            int batchSize) throws OrtException {
+
+        long[] shape = new long[]{batchSize, 3, 640, 640};
+        List<PoseDetectionResult> results = new ArrayList<>(batchSize);
+
+        FloatBuffer buffer = FloatBuffer.allocate(batchInputData.length);
+        buffer.put(batchInputData);
+        buffer.flip();
+
+        try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, buffer, shape)) {
+            Map<String, OnnxTensor> inputs = Collections.singletonMap(
+                    session.getInputNames().iterator().next(),
+                    inputTensor
+            );
+
+            try (OrtSession.Result onnxResults = session.run(inputs)) {
+                for (Map.Entry<String, OnnxValue> entry : onnxResults) {
+                    if (!(entry.getValue() instanceof OnnxTensor)) continue;
+
+                    OnnxTensor tensor = (OnnxTensor) entry.getValue();
+                    long[] tensorShape = tensor.getInfo().getShape();
+                    Object rawOutput = tensor.getValue();
+
+                    results = parseBatchPoseOutput(rawOutput, tensorShape, batchSize);
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * 解析批量姿态输出
+     */
+    private static List<PoseDetectionResult> parseBatchPoseOutput(
+            Object rawOutput,
+            long[] tensorShape,
+            int batchSize) {
+
+        List<PoseDetectionResult> results = new ArrayList<>(batchSize);
+        float confThreshold = 0.45f;
+
+        if (rawOutput instanceof float[][][]) {
+            float[][][] batch = (float[][][]) rawOutput;
+
+            int dim0 = batch.length;
+            int dim1 = batch[0].length;
+            int dim2 = batch[0][0].length;
+
+            log.debug("[姿态输出格式] shape:[{}, {}, {}]", dim0, dim1, dim2);
+
+            // 判断格式: [batch][56][8400] 或 [batch][8400][56]
+            boolean needTranspose = dim1 == 56 && dim2 > 1000;
+
+            for (int b = 0; b < batchSize; b++) {
+                PoseDetectionResult result = new PoseDetectionResult();
+
+                if (needTranspose) {
+                    // YOLOv11格式 [56, 8400]
+                    parsePoseTransposed(batch[b], dim2, confThreshold, result);
+                } else {
+                    // YOLOv8格式 [8400, 56]
+                    parsePoseStandard(batch[b], confThreshold, result);
+                }
+
+                results.add(result);
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * 解析转置姿态格式 [56, 8400]
+     */
+    private static void parsePoseTransposed(
+            float[][] detections,
+            int numDetections,
+            float confThreshold,
+            PoseDetectionResult result) {
+
+        for (int i = 0; i < numDetections; i++) {
+            float cx = detections[0][i];
+            float cy = detections[1][i];
+            float w = detections[2][i];
+            float h = detections[3][i];
+            float confidence = detections[4][i];
+
+            if (confidence > confThreshold) {
+                // 提取51个关键点数据 (17个关键点 * 3)
+                float[] keypoints = new float[51];
+                for (int j = 0; j < 51; j++) {
+                    keypoints[j] = detections[5 + j][i];
+                }
+
+                // 验证关键点有效性
+                if (validateKeypoints(keypoints, w, h)) {
+                    result.addDetection(
+                            cx - w / 2, cy - h / 2, w, h,
+                            confidence, keypoints
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * 解析标准姿态格式 [8400, 56]
+     */
+    private static void parsePoseStandard(
+            float[][] detections,
+            float confThreshold,
+            PoseDetectionResult result) {
+
+        for (float[] detection : detections) {
+            if (detection.length < 56) continue;
+
+            float cx = detection[0];
+            float cy = detection[1];
+            float w = detection[2];
+            float h = detection[3];
+            float confidence = detection[4];
+
+            if (confidence > confThreshold) {
+                float[] keypoints = new float[51];
+                System.arraycopy(detection, 5, keypoints, 0, 51);
+
+                if (validateKeypoints(keypoints, w, h)) {
+                    result.addDetection(
+                            cx - w / 2, cy - h / 2, w, h,
+                            confidence, keypoints
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * 关键点有效性验证 - 核心过滤逻辑
+     */
+    private static boolean validateKeypoints(float[] keypoints, float boxWidth, float boxHeight) {
+        int validCoordCount = 0;
+        int highVisibilityCount = 0;
+        float minX = Float.MAX_VALUE, maxX = Float.MIN_VALUE;
+        float minY = Float.MAX_VALUE, maxY = Float.MIN_VALUE;
+
+        // 遍历17个关键点
+        for (int k = 0; k < 17; k++) {
+            float kx = keypoints[k * 3];
+            float ky = keypoints[k * 3 + 1];
+            float visibility = keypoints[k * 3 + 2];
+
+            boolean coordsInRange = (kx >= 0 && kx <= 640 && ky >= 0 && ky <= 640);
+            boolean notZero = (kx > 0.1 || ky > 0.1);
+
+            if (coordsInRange && notZero) {
+                validCoordCount++;
+
+                if (visibility > 0.5) {
+                    highVisibilityCount++;
+                    minX = Math.min(minX, kx);
+                    maxX = Math.max(maxX, kx);
+                    minY = Math.min(minY, ky);
+                    maxY = Math.max(maxY, ky);
+                }
+            }
+        }
+
+        // 至少5个高可见性关键点
+        if (highVisibilityCount < 5) {
+            return false;
+        }
+
+        // 计算关键点分布范围
+        float keypointWidth = (maxX == Float.MIN_VALUE) ? 0 : (maxX - minX);
+        float keypointHeight = (maxY == Float.MIN_VALUE) ? 0 : (maxY - minY);
+
+        // 关键点必须有合理的分布
+        boolean hasReasonableSpread = (keypointWidth > 50 && keypointHeight > 100);
+        if (!hasReasonableSpread) {
+            return false;
+        }
+
+        // 关键点应该覆盖边界框的大部分区域
+        float widthRatio = (boxWidth > 0) ? (keypointWidth / boxWidth) : 0;
+        float heightRatio = (boxHeight > 0) ? (keypointHeight / boxHeight) : 0;
+
+        boolean coversEnoughArea = (widthRatio > 0.5 && heightRatio > 0.6);
+
+        return coversEnoughArea;
+    }
+
+    /**
+     * 姿态模型后处理 - 跌倒检测等
+     */
+    private static boolean postProcessPoseModel(
+            Mat image,
+            PoseDetectionResult detectionResult,
+            NetPush netPush,
+            TabAiSubscriptionNew pushInfo,
+            List<retureBoxInfo> preResults,
+            RedisTemplate redisTemplate) {
+
+        try {
+            // 1. 频率控制
+            long intervalTime = Long.parseLong(pushInfo.getEventNumber());
+            Object lastPushTime = redisTemplate.opsForValue().get(netPush.getId());
+            if (lastPushTime != null) {
+                return false;
+            }
+
+            // 2. 检测结果验证
+            if (detectionResult.boxes.isEmpty() || detectionResult.boxes.size() > 50) {
+                return false;
+            }
+
+            // 3. NMS去重
+            int[] nmsIndices = performPoseNMS(detectionResult, 0.45f, 0.4f);
+            if (nmsIndices.length == 0) {
+                return false;
+            }
+
+            // 4. 坐标还原参数
+            double scale = Math.min(640.0 / image.cols(), 640.0 / image.rows());
+            double dx = (640 - image.cols() * scale) / 2;
+            double dy = (640 - image.rows() * scale) / 2;
+
+            // 5. 姿态分析和绘制
+            DetectionStats stats = new DetectionStats();
+            int validCount = 0;
+
+            for (int idx : nmsIndices) {
+                Rect2d box = detectionResult.boxes.get(idx);
+                float confidence = detectionResult.confidences.get(idx);
+                float[] keypoints = detectionResult.keypoints.get(idx);
+
+                // 坐标还原
+                double x = Math.max(0, (box.x - dx) / scale);
+                double y = Math.max(0, (box.y - dy) / scale);
+                double width = Math.min(box.width / scale, image.cols() - x);
+                double height = Math.min(box.height / scale, image.rows() - y);
+
+                // 区域过滤
+                if (!isValidDetection(netPush, preResults, x, y, width, height)) {
+                    continue;
+                }
+
+                // 执行跌倒检测
+                FallDetectionResult fallResult = detectFallOrStand(
+                        keypoints, scale, dx, dy
+                );
+
+                if (!fallResult.isAlert()) {
+                    continue;
+                }
+
+                // 类别配置
+                TabAiBase aiBase = VideoSendReadCfg.map.get(fallResult.getStatus());
+                if (aiBase == null) {
+                    aiBase = new TabAiBase();
+                    aiBase.setChainName(fallResult.getStatus());
+                }
+
+                if (shouldSkipClass(aiBase)) {
+                    continue;
+                }
+
+                // 累计统计
+                stats.accumulate(aiBase);
+
+                // 绘制
+                Scalar color = getColor(aiBase.getRgbColor());
+                drawDetection(image, x, y, width, height,
+                        aiBase.getChainName(), confidence, color);
+
+                // 绘制关键点骨架
+             ///   drawPoseKeypoints(image, keypoints, scale, dx, dy, color);
+
+                validCount++;
+
+                log.info("✅ 姿态检测: 状态={}, 置信度={}, 原因={}",
+                        fallResult.getStatus(), confidence, fallResult.getReason());
+            }
+
+            // 6. 推送结果
+            if (stats.warnNumber <= 0) {
+                return false;
+            }
+
+            redisTemplate.opsForValue().set(netPush.getId(), System.currentTimeMillis(),
+                    intervalTime, TimeUnit.SECONDS);
+
+            String savePath = netPush.getUploadPath() + File.separator + "push" + File.separator;
+            String savedImagePath = saveDetectionImage(image, savePath);
+
+            isOk(pushInfo, netPush, redisTemplate, savedImagePath, netPush.getTabAiModel(),
+                    stats.audioText, stats.warnNumber, stats.warnText, stats.warnName, savePath);
+
+            log.info("[姿态检测成功] 有效检测:{}/{}, 报警数:{}",
+                    validCount, nmsIndices.length, stats.warnNumber);
+
+            return true;
+
+        } catch (Exception e) {
+            log.error("[姿态后处理失败]", e);
+            return false;
+        }
+    }
+
+    /**
+     * 姿态NMS
+     */
+    private static int[] performPoseNMS(PoseDetectionResult result,
+                                        float confThreshold, float nmsThreshold) {
+        if (result.boxes.isEmpty()) {
+            return new int[0];
+        }
+
+        MatOfRect2d boxesMat = new MatOfRect2d();
+        boxesMat.fromList(result.boxes);
+
+        MatOfFloat confMat = new MatOfFloat(
+                Converters.vector_float_to_Mat(result.confidences)
+        );
+        MatOfInt indices = new MatOfInt();
+
+        Dnn.NMSBoxes(boxesMat, confMat, confThreshold, nmsThreshold, indices);
+
+        return indices.empty() ? new int[0] : indices.toArray();
+    }
+
+    /**
+     * 跌倒检测逻辑
+     */
+    private static FallDetectionResult detectFallOrStand(
+            float[] keypoints, double scale, double dx, double dy) {
+
+        FallDetectionResult result = new FallDetectionResult();
+
+        // 还原关键点坐标到原图
+        List<Point> kpts = new ArrayList<>();
+        for (int i = 0; i < 17; i++) {
+            float kx = keypoints[i * 3];
+            float ky = keypoints[i * 3 + 1];
+            float vis = keypoints[i * 3 + 2];
+
+            if (vis > 0.3) {
+                double x = (kx - dx) / scale;
+                double y = (ky - dy) / scale;
+                kpts.add(new Point(x, y));
+            } else {
+                kpts.add(null);
+            }
+        }
+
+        // COCO关键点索引
+        // 0:鼻子, 5:左肩, 6:右肩, 11:左髋, 12:右髋, 13:左膝, 14:右膝
+        Point nose = kpts.size() > 0 ? kpts.get(0) : null;
+        Point leftShoulder = kpts.size() > 5 ? kpts.get(5) : null;
+        Point rightShoulder = kpts.size() > 6 ? kpts.get(6) : null;
+        Point leftHip = kpts.size() > 11 ? kpts.get(11) : null;
+        Point rightHip = kpts.size() > 12 ? kpts.get(12) : null;
+
+        // 计算躯干角度
+        if (leftShoulder != null && leftHip != null) {
+            double angle = calculateAngle(leftShoulder, leftHip);
+
+            if (angle < 45) {
+                // 躯干接近水平,判定为跌倒
+                result.setStatus("跌倒");
+                result.setAlert(true);
+                result.setReason("躯干角度过小: " + String.format("%.1f°", angle));
+                result.setConfidence(1.0 - angle / 90.0);
+                return result;
+            }
+        }
+
+        // 计算头部和髋部的相对位置
+        if (nose != null && leftHip != null && rightHip != null) {
+            double avgHipY = (leftHip.y + rightHip.y) / 2;
+
+            if (nose.y > avgHipY - 50) {
+                // 头部低于髋部
+                result.setStatus("跌倒");
+                result.setAlert(true);
+                result.setReason("头部位置异常");
+                result.setConfidence(0.85);
+                return result;
+            }
+        }
+
+        // 正常站立
+        result.setStatus("站立");
+        result.setAlert(false);
+        result.setReason("正常姿态");
+        result.setConfidence(0.0);
+
+        return result;
+    }
+
+    /**
+     * 计算角度
+     */
+    private static double calculateAngle(Point p1, Point p2) {
+        double dx = p2.x - p1.x;
+        double dy = p2.y - p1.y;
+        double angle = Math.abs(Math.toDegrees(Math.atan2(dy, dx)));
+        return Math.min(angle, 180 - angle);
+    }
+
+    /**
+     * 绘制姿态关键点
+     */
+    private static void drawPoseKeypoints(Mat image, float[] keypoints,
+                                          double scale, double dx, double dy,
+                                          Scalar color) {
+        // COCO骨架连接
+        int[][] skeleton = {
+                {0, 1}, {0, 2}, {1, 3}, {2, 4},  // 头部
+                {5, 6}, {5, 7}, {7, 9},          // 左臂
+                {6, 8}, {8, 10},                 // 右臂
+                {5, 11}, {6, 12},                // 躯干
+                {11, 12}, {11, 13}, {13, 15},    // 左腿
+                {12, 14}, {14, 16}               // 右腿
+        };
+
+        // 提取有效关键点
+        List<Point> points = new ArrayList<>();
+        for (int i = 0; i < 17; i++) {
+            float kx = keypoints[i * 3];
+            float ky = keypoints[i * 3 + 1];
+            float vis = keypoints[i * 3 + 2];
+
+            if (vis > 0.5) {
+                double x = (kx - dx) / scale;
+                double y = (ky - dy) / scale;
+                points.add(new Point(x, y));
+
+                // 绘制关键点
+                Imgproc.circle(image, new Point(x, y), 3, color, -1);
+            } else {
+                points.add(null);
+            }
+        }
+
+        // 绘制骨架连接
+        for (int[] bone : skeleton) {
+            if (bone[0] < points.size() && bone[1] < points.size()) {
+                Point p1 = points.get(bone[0]);
+                Point p2 = points.get(bone[1]);
+
+                if (p1 != null && p2 != null) {
+                    Imgproc.line(image, p1, p2, color, 2);
+                }
+            }
+        }
+    }
+
+// ==================== 数据结构 ====================
+
+    /**
+     * 姿态检测结果
+     */
+    static class PoseDetectionResult {
+        List<Rect2d> boxes = new ArrayList<>();
+        List<Float> confidences = new ArrayList<>();
+        List<float[]> keypoints = new ArrayList<>();  // 每个检测51个float (17*3)
+
+        void addDetection(double x, double y, double w, double h,
+                          float confidence, float[] kpts) {
+            boxes.add(new Rect2d(x, y, w, h));
+            confidences.add(confidence);
+            keypoints.add(kpts);
+        }
+    }
+
+    /**
+     * 跌倒检测结果
+     */
+    static class FallDetectionResult {
+        private String status;        // "跌倒" 或 "站立"
+        private boolean alert;        // 是否报警
+        private String reason;        // 判定原因
+        private double confidence;    // 置信度
+
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public boolean isAlert() { return alert; }
+        public void setAlert(boolean alert) { this.alert = alert; }
+        public String getReason() { return reason; }
+        public void setReason(String reason) { this.reason = reason; }
+        public double getConfidence() { return confidence; }
+        public void setConfidence(double confidence) { this.confidence = confidence; }
+    }
 }
