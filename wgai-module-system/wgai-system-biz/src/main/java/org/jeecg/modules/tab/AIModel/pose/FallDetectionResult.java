@@ -96,7 +96,7 @@ public class FallDetectionResult {
                     bodyVerticalScore, bodyAspectScore, headHeightScore, torsoAngleScore, kneePositionScore, totalScore));
 
             // 更严格的判断阈值
-            if (totalScore < 0.35) {
+            if (totalScore < 0.32) {
                 return new FallDetectionResult("fall", (float) (1.0 - totalScore),
                         "检测到明显跌倒姿态", true);
             } else if (totalScore > 0.75) {

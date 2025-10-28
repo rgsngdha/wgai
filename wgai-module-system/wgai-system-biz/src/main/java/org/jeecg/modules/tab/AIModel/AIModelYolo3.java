@@ -1398,6 +1398,8 @@ public class AIModelYolo3 {
                                     }
 
 
+
+
                                     // ✅ 验证关键点有效性
                                     int validCoordCount = 0;
                                     int highVisibilityCount = 0;
@@ -1416,6 +1418,11 @@ public class AIModelYolo3 {
                                             validCoordCount++;
 
                                             if (visibility > 0.5) {
+                                                if (i == 0) {
+                                                    System.out.println("鼻子坐标: (" + kx + "," + ky + ")");
+                                                } else if (i == 9 || i == 10) {
+                                                    System.out.println("手腕位置: " + (i == 9 ? "左手" : "右手") + " (" + kx + "," + ky + ")");
+                                                }
                                                 highVisibilityCount++;
                                                 // 只统计高可见性的关键点范围
                                                 minX = Math.min(minX, kx);
@@ -1449,8 +1456,8 @@ public class AIModelYolo3 {
                                     if (highVisibilityCount >= 3) {
 
                                         // 策略2: 根据边界框大小动态调整阈值
-                                        float minWidth = Math.min(50, width * 0.3f);   // 最小宽度: 50px 或 边界框30%
-                                        float minHeight = Math.min(80, height * 0.4f); // 最小高度: 80px 或 边界框40%
+                                        float minWidth = Math.min(30, width * 0.3f);   // 最小宽度: 30px 或 边界框30%
+                                        float minHeight = Math.min(70, height * 0.4f); // 最小高度: 70px 或 边界框40%
 
                                         boolean hasReasonableSpread = (keypointWidth > minWidth && keypointHeight > minHeight);
 
@@ -1472,7 +1479,7 @@ public class AIModelYolo3 {
                                     } else {
                                         // 策略5: 低可见性但高置信度的兜底方案
                                         // 如果置信度很高(>0.75)且至少有2个关键点，也可以尝试保留
-                                        if (confidence > 0.75f && validCoordCount >= 2) {
+                                        if (confidence > 0.6f && validCoordCount >= 2) {
                                             hasValidKeypoints = true;
                                             if (debugCount <= 3) {
                                                 System.out.println(String.format("  验证结果: 高置信度兜底通过 (conf=%.2f, valid=%d)",
@@ -1484,6 +1491,7 @@ public class AIModelYolo3 {
                                             }
                                         }
                                     }
+
 
                                     if (hasValidKeypoints) {
                                         classIds.add(0);
