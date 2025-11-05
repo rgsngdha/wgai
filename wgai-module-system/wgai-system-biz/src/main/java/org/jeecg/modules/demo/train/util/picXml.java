@@ -2,6 +2,8 @@ package org.jeecg.modules.demo.train.util;
 
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * @author wggg
  * @date 2024/12/20 17:39
@@ -26,4 +28,8 @@ public class picXml {
     public Integer isMark;
 
     public String aiModel;
+
+    public  String type; //标记类型
+
+    public List<points> points;
 }

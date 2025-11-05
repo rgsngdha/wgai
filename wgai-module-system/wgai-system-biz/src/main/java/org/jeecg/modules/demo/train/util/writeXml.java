@@ -3,6 +3,8 @@ package org.jeecg.modules.demo.train.util;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jeecg.modules.demo.easy.entity.TabEasyPic;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -18,6 +20,7 @@ import java.util.List;
  * @author wggg
  * @date 2024/12/20 17:13
  */
+@Slf4j
 public class writeXml {
 
         public static void main(String[] args) {
@@ -197,6 +200,12 @@ public class writeXml {
                     objectName.appendChild(doc.createTextNode(pic.getName()));
                     object.appendChild(objectName);
 
+                    // 标注类型
+                    Element typeElement = doc.createElement("type");
+                    String annotationType = pic.getType() != null ? pic.getType() : "rect";
+                    typeElement.appendChild(doc.createTextNode(annotationType));
+                    object.appendChild(typeElement);
+
                     Element pose = doc.createElement("pose");
                     pose.appendChild(doc.createTextNode("Unspecified"));
                     object.appendChild(pose);
@@ -208,22 +217,67 @@ public class writeXml {
                     Element difficult = doc.createElement("difficult");
                     difficult.appendChild(doc.createTextNode("0"));
                     object.appendChild(difficult);
+                    if (StringUtils.isEmpty(pic.getType())||"rect".equals(pic.getType())) { //
+                        log.info("当前标注类型矩形！");
+                        // <bndbox> 元素
+                        Element bndbox = doc.createElement("bndbox");
+                        object.appendChild(bndbox);
+                        Element xmin = doc.createElement("xmin");
+                        xmin.appendChild(doc.createTextNode(pic.getXmin()));
+                        bndbox.appendChild(xmin);
+                        Element ymin = doc.createElement("ymin");
+                        ymin.appendChild(doc.createTextNode(pic.getYmin()));
+                        bndbox.appendChild(ymin);
+                        Element xmax = doc.createElement("xmax");
+                        xmax.appendChild(doc.createTextNode(pic.getXmax()));
+                        bndbox.appendChild(xmax);
+                        Element ymax = doc.createElement("ymax");
+                        ymax.appendChild(doc.createTextNode(pic.getYmax()));
+                        bndbox.appendChild(ymax);
+                    }else if ("polygon".equals(annotationType)) {
+                        log.info("当前标注类型多边形标注！");
+                        // 多边形标注 - 使用 polygon
+                        Element polygon = doc.createElement("polygon");
+                        object.appendChild(polygon);
 
-                    // <bndbox> 元素
-                    Element bndbox = doc.createElement("bndbox");
-                    object.appendChild(bndbox);
-                    Element xmin = doc.createElement("xmin");
-                    xmin.appendChild(doc.createTextNode(pic.getXmin()));
-                    bndbox.appendChild(xmin);
-                    Element ymin = doc.createElement("ymin");
-                    ymin.appendChild(doc.createTextNode(pic.getYmin()));
-                    bndbox.appendChild(ymin);
-                    Element xmax = doc.createElement("xmax");
-                    xmax.appendChild(doc.createTextNode(pic.getXmax()));
-                    bndbox.appendChild(xmax);
-                    Element ymax = doc.createElement("ymax");
-                    ymax.appendChild(doc.createTextNode(pic.getYmax()));
-                    bndbox.appendChild(ymax);
+                        if (pic.getPoints() != null && !pic.getPoints().isEmpty()) {
+                            for (int i = 0; i < pic.getPoints().size(); i++) {
+                                points point = pic.getPoints().get(i);
+
+                                // 创建点元素 <pt>
+                                Element pt = doc.createElement("pt");
+                                polygon.appendChild(pt);
+
+                                // x坐标
+                                Element x = doc.createElement("x");
+                                x.appendChild(doc.createTextNode(String.valueOf(point.getX())));
+                                pt.appendChild(x);
+
+                                // y坐标
+                                Element y = doc.createElement("y");
+                                y.appendChild(doc.createTextNode(String.valueOf(point.getY())));
+                                pt.appendChild(y);
+                            }
+                        }
+
+                    } else if ("control".equals(annotationType)) {
+                        log.info("当前标注类型控制点！");
+                        // 控制点标注 - 使用 point
+                        Element pointElement = doc.createElement("point");
+                        object.appendChild(pointElement);
+
+                        if (pic.getPoints() != null && !pic.getPoints().isEmpty()) {
+                            points point = pic.getPoints().get(0); // 控制点只有一个坐标
+
+                            Element x = doc.createElement("x");
+                            x.appendChild(doc.createTextNode(String.valueOf(point.getX())));
+                            pointElement.appendChild(x);
+
+                            Element y = doc.createElement("y");
+                            y.appendChild(doc.createTextNode(String.valueOf(point.getY())));
+                            pointElement.appendChild(y);
+                        }
+                    }
                 }
             // 将文档内容写入文件，不携带 XML 声明
             TransformerFactory transformerFactory = TransformerFactory.newInstance();

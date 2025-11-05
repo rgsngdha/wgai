@@ -2053,7 +2053,7 @@ public class identifyTypeNewOnnx {
         return WareText + "," + name;
 
     }
-    private static Mat letterboxResize(Mat image, int targetWidth, int targetHeight) {
+    public static Mat letterboxResize(Mat image, int targetWidth, int targetHeight) {
         int originalWidth = image.cols();
         int originalHeight = image.rows();
 

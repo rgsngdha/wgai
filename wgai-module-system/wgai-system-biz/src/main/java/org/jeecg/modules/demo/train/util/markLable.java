@@ -105,23 +105,38 @@ public class markLable {
 
                 // 获取类别名称和标记
                 String className = objectElement.getElementsByTagName("name").item(0).getTextContent();
-                String difficult = objectElement.getElementsByTagName("difficult").item(0).getTextContent();
+
+                // 检查difficult标签是否存在
+                String difficult = "0";
+                NodeList difficultNodes = objectElement.getElementsByTagName("difficult");
+                if (difficultNodes.getLength() > 0) {
+                    difficult = difficultNodes.item(0).getTextContent();
+                }
+
+                // 获取类型
+                String type = "bndbox"; // 默认类型
+                NodeList typeNodes = objectElement.getElementsByTagName("type");
+                if (typeNodes.getLength() > 0) {
+                    type = typeNodes.item(0).getTextContent();
+                }
 
                 if (Arrays.asList(classes).contains(className) && !difficult.equals("1")) {
                     int classId = Arrays.asList(classes).indexOf(className);
 
-                    // 获取边界框
-                    Element bndbox = (Element) objectElement.getElementsByTagName("bndbox").item(0);
-                    double xmin = Double.parseDouble(bndbox.getElementsByTagName("xmin").item(0).getTextContent());
-                    double xmax = Double.parseDouble(bndbox.getElementsByTagName("xmax").item(0).getTextContent());
-                    double ymin = Double.parseDouble(bndbox.getElementsByTagName("ymin").item(0).getTextContent());
-                    double ymax = Double.parseDouble(bndbox.getElementsByTagName("ymax").item(0).getTextContent());
-
-                    // 归一化坐标
-                    double[] box = convert(width, height, new double[]{xmin, xmax, ymin, ymax});
-
-                    // 写入文件
-                    writer.write(classId + " " + box[0] + " " + box[1] + " " + box[2] + " " + box[3] + "\n");
+                    // 根据类型处理不同的标注格式
+                    if (type.equals("polygon")) {
+                        log.info("处理多边形！！！！！！！！！！！");
+                        // 处理多边形
+                        handlePolygon(objectElement, classId, width, height, writer);
+                    } else if (type.equals("control")) {
+                        log.info("处理控制点！！！！！！！！！！！");
+                        // 处理控制点
+                        handleControlPoint(objectElement, classId, width, height, writer);
+                    } else {
+                        log.info("处理矩形边界框！！！！！！！！！！！");
+                        // 处理矩形边界框(原有逻辑)
+                        handleBoundingBox(objectElement, classId, width, height, writer);
+                    }
                 }
             }
         }
@@ -129,7 +144,67 @@ public class markLable {
         writer.close();
     }
 
+    // 处理矩形边界框
+    private static void handleBoundingBox(Element objectElement, int classId, int width, int height, BufferedWriter writer) throws Exception {
+        NodeList bndboxNodes = objectElement.getElementsByTagName("bndbox");
+        if (bndboxNodes.getLength() > 0) {
+            Element bndbox = (Element) bndboxNodes.item(0);
+            double xmin = Double.parseDouble(bndbox.getElementsByTagName("xmin").item(0).getTextContent());
+            double xmax = Double.parseDouble(bndbox.getElementsByTagName("xmax").item(0).getTextContent());
+            double ymin = Double.parseDouble(bndbox.getElementsByTagName("ymin").item(0).getTextContent());
+            double ymax = Double.parseDouble(bndbox.getElementsByTagName("ymax").item(0).getTextContent());
 
+            // 归一化坐标
+            double[] box = convert(width, height, new double[]{xmin, xmax, ymin, ymax});
+
+            // 写入文件 (YOLO格式: class_id center_x center_y width height)
+            writer.write(classId + " " + box[0] + " " + box[1] + " " + box[2] + " " + box[3] + "\n");
+        }
+    }
+
+    // 处理多边形
+    private static void handlePolygon(Element objectElement, int classId, int width, int height, BufferedWriter writer) throws Exception {
+        NodeList polygonNodes = objectElement.getElementsByTagName("polygon");
+        if (polygonNodes.getLength() > 0) {
+            Element polygon = (Element) polygonNodes.item(0);
+            NodeList ptNodes = polygon.getElementsByTagName("pt");
+
+            StringBuilder line = new StringBuilder();
+            line.append(classId);
+
+            // 遍历所有点,归一化坐标
+            for (int j = 0; j < ptNodes.getLength(); j++) {
+                Element pt = (Element) ptNodes.item(j);
+                double x = Double.parseDouble(pt.getElementsByTagName("x").item(0).getTextContent());
+                double y = Double.parseDouble(pt.getElementsByTagName("y").item(0).getTextContent());
+
+                // 归一化到0-1范围
+                double normX = x / width;
+                double normY = y / height;
+
+                line.append(" ").append(normX).append(" ").append(normY);
+            }
+
+            writer.write(line.toString() + "\n");
+        }
+    }
+
+    // 处理控制点
+    private static void handleControlPoint(Element objectElement, int classId, int width, int height, BufferedWriter writer) throws Exception {
+        NodeList pointNodes = objectElement.getElementsByTagName("point");
+        if (pointNodes.getLength() > 0) {
+            Element point = (Element) pointNodes.item(0);
+            double x = Double.parseDouble(point.getElementsByTagName("x").item(0).getTextContent());
+            double y = Double.parseDouble(point.getElementsByTagName("y").item(0).getTextContent());
+
+            // 归一化到0-1范围
+            double normX = x / width;
+            double normY = y / height;
+
+            // 写入文件 (格式: class_id x y)
+            writer.write(classId + " " + normX + " " + normY + "\n");
+        }
+    }
     public static void sendLable(TabTrainPython python, TabModelTry tabModelTry){
         log.info("【获取的路径】{}",python.getPyPath());
 

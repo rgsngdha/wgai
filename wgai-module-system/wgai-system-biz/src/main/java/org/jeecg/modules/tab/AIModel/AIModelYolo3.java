@@ -27,6 +27,7 @@ import org.jeecg.modules.tab.AIModel.V5.VideoReadtestV5;
 import org.jeecg.modules.tab.AIModel.V5Util.VideoReadInfoV5Util;
 import org.jeecg.modules.tab.AIModel.V5Util.VideoReadV5Util;
 import org.jeecg.modules.tab.AIModel.V5Util.VideoReadtestV5Util;
+import org.jeecg.modules.tab.AIModel.onnx.VideoReadOnnx;
 import org.jeecg.modules.tab.AIModel.pose.ActionResult;
 import org.jeecg.modules.tab.AIModel.pose.FallDetectionResult;
 import org.jeecg.modules.tab.util.CharRecognizer;
@@ -2937,13 +2938,19 @@ public class AIModelYolo3 {
 
     }
 
+    public String SendVideoLocalhostYoloV11Thread(NetPush netpush,TabAudioDevice tabAudioDevice, TabAiModelBund tabAiModelBund, String userId, String names, String videoUrl, String uploadpath, WebSocket webSocket, RedisUtil redisUtil, RedisTemplate redisTemplate) throws Exception {
+        ExecutorService executor = Executors.newCachedThreadPool();
+        log.info("开始识别onnx");
+        executor.submit(new VideoReadOnnx(netpush,tabAudioDevice, tabAiModelBund, videoUrl, redisTemplate, userId, uploadpath + File.separator + names,  webSocket));
 
-    /**
-     * 多线程处理视频帧
-     *
-     * @param
-     * @return
-     */
+        return "";
+    }
+        /**
+         * 多线程处理视频帧
+         *
+         * @param
+         * @return
+         */
     public String SendVideoLocalhostYoloV5Thread(TabAudioDevice tabAudioDevice, TabAiModelBund tabAiModelBund, String userId, String weight, String cfg, String names, String videoUrl, String uploadpath, WebSocket webSocket, RedisUtil redisUtil, RedisTemplate redisTemplate) throws Exception {
         Long a = System.currentTimeMillis();
 

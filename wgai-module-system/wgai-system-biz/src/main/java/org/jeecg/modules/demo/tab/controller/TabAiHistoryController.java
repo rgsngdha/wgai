@@ -27,6 +27,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 
+import org.jeecg.modules.demo.video.util.RedisCacheHolder;
 import org.jeecg.modules.message.websocket.WebSocket;
 import org.jeecg.modules.tab.AIModel.AIModelYolo3;
 import org.jeecg.modules.tab.entity.TabAiModel;
@@ -159,6 +160,7 @@ public class TabAiHistoryController extends JeecgController<TabAiHistory, ITabAi
 	 public Result<String> addIdentifyClose(@RequestBody TabAiModelBund tabAiModelBund) {
 		 LoginUser sysUser = (LoginUser) SecurityUtils.getSubject().getPrincipal();
 		 tabAiHistoryService.closedentify(tabAiModelBund,sysUser);
+		 RedisCacheHolder.put(tabAiModelBund.getId()  + "videoRead",false);
 //e9ca23d68d884d4ebb19d07889727dae
 		 return Result.error("结束识别成功");
 	 }

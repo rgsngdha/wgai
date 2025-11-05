@@ -1,5 +1,7 @@
 package org.jeecg.modules.demo.tab.service.impl;
 
+import ai.onnxruntime.OrtEnvironment;
+import ai.onnxruntime.OrtSession;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -30,11 +32,15 @@ import org.jeecg.modules.demo.tab.entity.TabAiSubscription;
 import org.jeecg.modules.demo.tab.mapper.TabAiBaseMapper;
 import org.jeecg.modules.demo.tab.mapper.TabAiHistoryMapper;
 import org.jeecg.modules.demo.tab.service.ITabAiHistoryService;
+import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
+import org.jeecg.modules.demo.video.util.RedisCacheHolder;
 import org.jeecg.modules.message.websocket.WebSocket;
 import org.jeecg.modules.monitor.service.RedisService;
 import org.jeecg.modules.system.controller.wavUtil;
 import org.jeecg.modules.system.entity.SysAnnouncementSend;
 import org.jeecg.modules.tab.AIModel.AIModelYolo3;
+import org.jeecg.modules.tab.AIModel.NetPush;
+import org.jeecg.modules.tab.AIModel.OnnxModelWrapper;
 import org.jeecg.modules.tab.AIModel.VideoSendReadCfg;
 import org.jeecg.modules.tab.AIModel.push.AiImgResult;
 import org.jeecg.modules.tab.AIModel.push.ReadVideoImg;
@@ -53,10 +59,13 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import javax.annotation.Resource;
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -752,6 +761,116 @@ public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, Tab
     }
 
     @Override
+    public int saveIdentifyLocalVideoThreadOnnx(TabAiModelBund tabAiModelBund, String path, String userId) {
+
+
+        log.info("V5识别内容开始！！！！！！！！！！！！！！！！！！！！！！！！！！！！！");
+        TabAiModel tabAiModel1=getTabAiModelInfo(modelMapper.selectById(tabAiModelBund.getModelName()),"xxx",path);
+        AIModelYolo3  modelYolo3=new AIModelYolo3();
+        //处置结束符
+        redisUtil.set(tabAiModelBund.getSendUrl()+"V5"+userId,true);
+        redisUtil.expire(tabAiModelBund.getSendUrl()+"V5"+userId,( 24*60*60*365*1000));
+        //处置时间戳
+        redisUtil.set(tabAiModelBund.getSendUrl()+"timeV5"+userId,0);
+        redisUtil.expire(tabAiModelBund.getSendUrl()+"timeV5"+userId,( 24*60*60*365*1000));
+        //处置基础库
+        Object object = redisUtil.get("AIModelBaseV5");
+        if(object==null){
+            LambdaQueryWrapper< TabAiBase> querybase = new LambdaQueryWrapper<>();
+            List<TabAiBase> base=tabAiBaseMapper.selectList(querybase);
+            redisUtil.set("AIModelBaseV5", JSONObject.toJSONString(base));
+            redisUtil.expire("AIModelBaseV5",(24*60*60*365*1000));
+            VideoSendReadCfg.map=VideoSendReadCfg.getMap(base);
+        }else{
+            String jsonObject= object.toString();
+            JSONArray array=JSONArray.parseArray(jsonObject);
+            List<TabAiBase> base= array.toJavaList(TabAiBase.class);
+            VideoSendReadCfg.map=VideoSendReadCfg.getMap(base);
+        }
+        try {
+            TabAudioDevice tabAudioDevice=new TabAudioDevice();
+            if(StringUtils.isNotEmpty(tabAiModelBund.getAudioId())&& tabAiModelBund.getIsAudio().equals("Y")){
+                tabAudioDevice=tabAudioDeviceMapper.selectById(tabAiModelBund.getAudioId());
+
+            }
+
+            NetPush beforePush=new NetPush();
+            OnnxModelWrapper endNet=getOnnxModel(  tabAiModel1);
+            beforePush.setSession(endNet.getSession());
+            beforePush.setEnv(endNet.getEnv());
+            beforePush.setClaseeNames(Files.readAllLines(Paths.get(tabAiModel1.getAiNameName())));
+            RedisCacheHolder.put(tabAiModelBund.getId()  + "videoRead",true);
+            String savePath=modelYolo3.SendVideoLocalhostYoloV11Thread(beforePush,tabAudioDevice,tabAiModelBund,userId,tabAiModel1.getAiNameName(),tabAiModelBund.getSendUrl(),path,webSocket,redisUtil,redisTemplate);
+            if(savePath.equals("error")){
+                return 1;
+            }
+        }catch (Exception ex){
+            log.warn("出错{}",ex);
+            ex.printStackTrace();
+            return 1;
+        }
+        return 0;
+
+    }
+
+    private static final Map<String, OnnxModelWrapper> GLOBAL_NET_CACHE_ONNX = new ConcurrentHashMap<>();
+
+    public TabAiModel getTabAiModelInfo(TabAiModel tabAiModel,String name,String path){
+        if(tabAiModel.getSpareOne().equals("1")){ //v3
+            tabAiModel.setAiConfig(path+ File.separator +tabAiModel.getAiConfig());
+        }
+        tabAiModel.setAiWeights(path+ File.separator +tabAiModel.getAiWeights());
+        tabAiModel.setAiNameName(path+ File.separator +tabAiModel.getAiNameName());
+        if(StringUtils.isNotEmpty(name)){
+            tabAiModel.setAiName(name);
+        }
+
+        return  tabAiModel;
+    }
+    public OnnxModelWrapper getOnnxModel( TabAiModel tabAiModel) {
+        String cacheKey =  tabAiModel.getId();
+        OnnxModelWrapper wrapper = GLOBAL_NET_CACHE_ONNX.get(cacheKey);
+
+        if (wrapper == null) {
+            synchronized (this) { // 添加同步锁防止并发创建
+                wrapper = GLOBAL_NET_CACHE_ONNX.get(cacheKey);
+                if (wrapper == null) {
+                    try {
+                        OrtEnvironment env = OrtEnvironment.getEnvironment();
+                        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+
+                        if (tabAiModel.getModelJmType()!=null&&tabAiModel.getModelJmType()==1) { // GPU
+                            options.addCUDA();
+                            log.info("[ONNX推理规则：GPU]");
+                        } else { // CPU
+                            options.setIntraOpNumThreads(1); // 每个session单算子只用1核
+                            options.setInterOpNumThreads(1);
+                            options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL);
+                            options.addCPU(true);
+
+                            log.info("[ONNX推理规则：CPU]");
+                        }
+
+                        System.out.println(OrtEnvironment.getEnvironment().getVersion());
+
+                        OrtSession session = env.createSession(tabAiModel.getAiWeights(), options);
+                        wrapper = new OnnxModelWrapper(env, session);
+                        GLOBAL_NET_CACHE_ONNX.put(cacheKey, wrapper);
+                        log.info("【ONNX模型加载成功并缓存】key: {}", cacheKey);
+                    } catch (Exception ex) {
+                        log.error("【ONNX模型加载失败】", ex);
+                        throw new RuntimeException("ONNX模型加载失败", ex);
+                    }
+                }
+            }
+        } else {
+            log.info("【已存在ONNX模型，直接返回】key: {}", cacheKey);
+        }
+
+        return wrapper;
+    }
+
+    @Override
     public Result<String>  startAi(TabAiModelBund tabAiModelBund, String path, String userId) {
 
 
@@ -797,21 +916,36 @@ public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, Tab
                         }
 
                     }else{
+                        if(aiModel.getModelDifyType()!=null&&aiModel.getModelDifyType()==20){
+                            this.saveIdentifyLocalVideoThreadOnnx(tabAiModelBund,path,userId);
+                        }else{
+                            this.saveIdentifyLocalVideoThreadV5(tabAiModelBund,path,userId);
+                        }
                         // 输出视频
                         // tabAiHistoryService.saveIdentifyVideo(tabAiModelBund,uploadpath);
                         // 输出坐标 延迟3-5s
                         //tabAiHistoryService.saveIdentifyLocalVideo(tabAiModelBund,uploadpath,sysUser.getId());
                         //多线程输出坐标
-                        this.saveIdentifyLocalVideoThreadV5(tabAiModelBund,path,userId);
+
                         return Result.OK("视频识别开始");
                     }
                     break;
                 }//v5
                 case "11":
                 {
-                    int a=this.saveIdentifyYolov(tabAiModelBund,path,aiModel.getSpareOne());
-                    if(a==0){
-                        return Result.OK("识别图片成功！");
+                    if(tabAiModelBund.getSpaceOne().equals("0")) { //当前为图片
+                        int a = this.saveIdentifyYolov(tabAiModelBund, path, aiModel.getSpareOne());
+                        if (a == 0) {
+                            return Result.OK("识别图片成功！");
+                        }
+                    }else{
+                        if(aiModel.getModelDifyType()!=null&&aiModel.getModelDifyType()==20){
+                            this.saveIdentifyLocalVideoThreadOnnx(tabAiModelBund,path,userId);
+                        }else{
+                            this.saveIdentifyLocalVideoThreadV5(tabAiModelBund,path,userId);
+                        }
+
+                        return Result.OK("视频识别开始");
                     }
                     break;
                 }
@@ -829,7 +963,12 @@ public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, Tab
                         // 输出坐标 延迟3-5s
                         //tabAiHistoryService.saveIdentifyLocalVideo(tabAiModelBund,uploadpath,sysUser.getId());
                         //多线程输出坐标
-                        this.saveIdentifyLocalVideoThread(tabAiModelBund,path,userId);
+                        if(aiModel.getModelDifyType()!=null&&aiModel.getModelDifyType()==20){
+                            log.info("onnx 视频识别内容");
+                        }else{
+                            this.saveIdentifyLocalVideoThread(tabAiModelBund,path,userId);
+                        }
+
                         return Result.OK("视频识别开始");
                     }
                     break;
