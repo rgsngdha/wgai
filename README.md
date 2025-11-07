@@ -86,7 +86,7 @@
 >
 >[<span style="color: red;">@github仓库地址 https://github.com/dromara/wgai </span>](https://github.com/dromara/wgai)
 >
->[<span style="color: red;">@gitcode仓库地址 https://gitcode.com/dromara/wgai </span>] https://gitcode.com/dromara/wgai
+>[<span style="color: red;">@gitcode仓库地址 https://gitcode.com/dromara/wgai </span>](https://gitcode.com/dromara/wgai)
 >
 ## 🏷️ 2. 启动前端
 >  启动过程遇到什么问题可自行百度解决 前端在VUE分支！
@@ -120,9 +120,12 @@
 
 ## 注明来意不然不通过（有问题isuess提问或者星球提问） 
 
+
 [//]: # (<img src="wg/chatpic.jpg" width="300px"  height="300px">)
 <img src="wg/qqq.jpg" width="300px"  height="500px">
-<img src="wg/xingqiu.png" width="500px"  height="280px">
+<img src="wg/1762480728807.png" width="300px"  height="500px">
+
+[//]: # (<img src="wg/xingqiu.png" width="500px"  height="280px">)
 
 ## 在线捐赠
 ### 如果此项目对你有用捐赠一下长期发展维护（捐赠>100前100名赠送AI秘籍）
