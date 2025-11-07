@@ -820,7 +820,7 @@ public class BatchOnnxInference {
                     log.info("返回内容：" + ob);
                 }
 
-                if (pushInfo.getSaveRecord() != 0 && StringUtils.isNotEmpty(recordVideo)) {  //不保存本地录像
+                if (pushInfo.getSaveRecord() != 0 && StringUtils.isNotEmpty(recordVideo)&&pushInfo.getSaveLocalhost()!=0) {
                     File imageFile = new File(recordVideo);
                     if (imageFile.exists()) {
                         imageFile.delete();
