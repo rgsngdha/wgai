@@ -838,6 +838,20 @@ public class TabTrainPythonServiceImpl extends ServiceImpl<TabTrainPythonMapper,
             log.info("【Path的结果集数据】{}",inputcmd);
             int start=inputcmd.lastIndexOf(":");
             return yolov5Path+File.separator+inputcmd.substring(start+1).replaceAll(" ","");
+        }else{
+             inputcmd = cmd.replaceAll("\u001B\\[[;\\d]*m", "").trim();
+            if(inputcmd.indexOf("Results")>-1){
+
+                String keyword = "Results saved to ";
+                int index = inputcmd.indexOf(keyword);
+                if (index != -1) {
+                    String path = inputcmd.substring(index + keyword.length()).trim();
+                    log.info("【11-Path的结果集数据】{}",path);
+                    // 输出: /home/yolov11/ultralytics/runs/detect/train5
+                    return yolov5Path+File.separator+path;
+                }
+
+            }
         }
 
         return "未找到";
