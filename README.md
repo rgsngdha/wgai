@@ -129,7 +129,7 @@
 
 ## 在线捐赠
 ### 如果此项目对你有用捐赠一下长期发展维护（捐赠>100前100名赠送AI秘籍）
-<img src="wg/wechat.jpg" width="300px"  height="300px"> 
+<img src="wg/wechatpay.jpg" width="300px"  height="300px"> 
 <img src="wg/zfb.jpg" width="300px"  height="300px">
 
 ### 捐赠名单按捐赠顺序前后鸣谢
