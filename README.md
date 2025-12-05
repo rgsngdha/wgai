@@ -16,7 +16,7 @@
 [![Contribute with Gitpod](https://img.shields.io/badge/Contribute%20with-Gitpod-908a85?logo=gitpod&color=green)](https://gitpod.io/#https://github.com/apache/hertzbeat)
 
 ## 🎡 <font color="green">介绍</font>
-> 简介：开箱即用的JAVA AI平台融合了AI图像识别opencv、yolo、esayAI内核识别;AI智能客服、AI语言模型、可定制化自主离线化部署并自主化行业化使用
+> 简介：开箱即用的JAVA AI平台融合了AI图像识别opencv、yolo、OCR、人脸识别内核识别;AI智能客服、AI语言模型、可定制化自主离线化部署并自主化行业化使用
 避免占用内存、GPU消耗训练与识别分开使用;支持yolov3、yolov5、yolov8模型 支持exel、txt等文本语言模型；
 > 
 ## 🔆为往胜继绝学！
