@@ -216,6 +216,7 @@ public class identifyTypeNewOnnx {
 
         // ========== 3. 图像预处理 ==========
         Mat processedImage = letterboxResize(image, 640, 640);
+        Imgproc.cvtColor(processedImage, processedImage, Imgproc.COLOR_BGR2RGB);
         float[] inputData = preprocessImage(processedImage);
 
         // ========== 4. ONNX推理 ==========
@@ -1241,7 +1242,7 @@ public class identifyTypeNewOnnx {
 
         // ========== 3. 图像预处理 ==========
         Mat processedImage = letterboxResize(image, 640, 640);
-      //  Imgproc.cvtColor(processedImage, processedImage, Imgproc.COLOR_BGR2RGB);
+        Imgproc.cvtColor(processedImage, processedImage, Imgproc.COLOR_BGR2RGB);
         float[] inputData = preprocessImage(processedImage);
 
         // ========== 4. ONNX推理 ==========
