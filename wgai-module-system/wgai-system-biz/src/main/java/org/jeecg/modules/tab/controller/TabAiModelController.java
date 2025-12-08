@@ -62,8 +62,12 @@ public class TabAiModelController extends JeecgController<TabAiModel, ITabAiMode
 
 
 		 QueryWrapper<TabAiModel> queryWrapper = QueryGenerator.initQueryWrapper(tabAiModel, req.getParameterMap());
-		 queryWrapper.ne("model_dify","20").or()
-				 .isNull("model_dify");;
+
+
+		 queryWrapper.and(i -> i.ne("model_dify", "20"))
+				 .or(i -> i.isNull("model_dify"));
+
+
 		 Page<TabAiModel> page = new Page<TabAiModel>(pageNo, pageSize);
 		 IPage<TabAiModel> pageList = tabAiModelService.page(page, queryWrapper);
 		 return Result.OK(pageList);

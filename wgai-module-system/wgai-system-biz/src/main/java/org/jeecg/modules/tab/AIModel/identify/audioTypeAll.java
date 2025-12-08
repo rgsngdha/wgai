@@ -203,6 +203,7 @@ public class audioTypeAll {
         DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
         TargetDataLine targetDataLine;
         try {
+
             targetDataLine = (TargetDataLine) AudioSystem.getLine(info);
             targetDataLine.open(format);
             targetDataLine.start();
@@ -244,7 +245,7 @@ public class audioTypeAll {
             boolean isEndpoint = recognizer.isEndpoint(stream);
             if (!text.isEmpty() && text != " " && lastText != text) {
                 lastText = text;
-                System.out.printf("%d: %s\r", segmentIndex, text);
+                System.out.printf("开始输出%d: %s\r", segmentIndex, text);
             }
 
             if (isEndpoint) {

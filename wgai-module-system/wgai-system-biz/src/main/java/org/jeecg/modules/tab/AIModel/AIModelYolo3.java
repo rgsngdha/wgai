@@ -15,6 +15,7 @@ import org.bytedeco.javacv.Frame;
 import org.jeecg.common.util.RedisUtil;
 import org.jeecg.modules.demo.audio.entity.TabAudioDevice;
 import org.jeecg.modules.demo.face.entity.FaceBox;
+import org.jeecg.modules.demo.face.util.GenderAgeResult;
 import org.jeecg.modules.demo.tab.entity.PushInfo;
 
 import org.jeecg.modules.demo.tab.entity.TabAiModelBund;
@@ -32,6 +33,7 @@ import org.jeecg.modules.tab.AIModel.V5Util.VideoReadtestV5Util;
 import org.jeecg.modules.tab.AIModel.onnx.VideoReadOnnx;
 import org.jeecg.modules.tab.AIModel.pose.ActionResult;
 import org.jeecg.modules.tab.AIModel.pose.FallDetectionResult;
+import org.jeecg.modules.tab.entity.TabAiModel;
 import org.jeecg.modules.tab.util.CharRecognizer;
 import org.opencv.core.*;
 
@@ -1108,9 +1110,14 @@ public class AIModelYolo3 {
     }
 
 
-    public static String SendPicYoloV11CVPose(String weight, String names, String picUrl, String saveName, String uploadpath) throws Exception {
+    public static String SendPicYoloV11CVPose(TabAiModel tabAiModel, String picUrl, String saveName, String uploadpath) throws Exception {
         log.info(uploadpath);
         Long a = System.currentTimeMillis();
+        String weight=tabAiModel.getAiWeights();
+        String names=tabAiModel.getAiNameName();
+
+        float confThreshold=tabAiModel.getThreshold()==null?0.35f:tabAiModel.getThreshold().floatValue();
+        float nmsThreshold=tabAiModel.getNmsThreshold()==null?0.2f:tabAiModel.getNmsThreshold().floatValue();
 
         // 加载类别名称
         List<String> classes = Files.readAllLines(Paths.get(uploadpath + File.separator + names));
@@ -1140,9 +1147,7 @@ public class AIModelYolo3 {
             return "error";
         }
 
-        // 调整阈值
-        float confThreshold = 0.35f;
-        float nmsThreshold = 0.2f;
+
 
         List<Rect2d> boxes2d = new ArrayList<>();
         List<Float> confidences = new ArrayList<>();
@@ -1301,11 +1306,15 @@ public class AIModelYolo3 {
 
         return saveName + ".jpg";
     }
-    public static String SendPicYoloV11ONNXPose(String weight, String names, String picUrl,
+    public static String SendPicYoloV11ONNXPose(TabAiModel tabAiModel,String picUrl,
                                                 String saveName, String uploadpath, boolean useGpu) throws Exception {
         log.info(uploadpath);
         Long startTime = System.currentTimeMillis();
+        String weight=tabAiModel.getAiWeights();
+        String names=tabAiModel.getAiNameName();
 
+        float confThreshold=tabAiModel.getThreshold()==null?0.45f:tabAiModel.getThreshold().floatValue();
+        float nmsThreshold=tabAiModel.getNmsThreshold()==null?0.4f:tabAiModel.getNmsThreshold().floatValue();
         // 1. 加载类别名称
         List<String> classes = Files.readAllLines(Paths.get(uploadpath + File.separator + names));
 
@@ -1346,8 +1355,7 @@ public class AIModelYolo3 {
                     session.getInputNames().iterator().next(), inputTensor);
 
             // 6. 推理并解析结果
-            float confThreshold = 0.45f;
-            float nmsThreshold = 0.35f;
+
 
             List<Rect2d> boxes2d = new ArrayList<>();
             List<Float> confidences = new ArrayList<>();
@@ -1716,11 +1724,15 @@ public class AIModelYolo3 {
     }
 
 
-    public static String SendPicOnnxYoloV11(String weight, String names, String picUrl,
+    public static String SendPicOnnxYoloV11(TabAiModel tabAiModel,String picUrl,
                                             String saveName, String uploadpath, boolean useGpu) throws Exception {
 
         long startTime = System.currentTimeMillis();
+        String weight=tabAiModel.getAiWeights();
+        String names=tabAiModel.getAiNameName();
 
+        float confThreshold=tabAiModel.getThreshold()==null?0.3f:tabAiModel.getThreshold().floatValue();
+        float nmsThreshold=tabAiModel.getNmsThreshold()==null?0.2f:tabAiModel.getNmsThreshold().floatValue();
         // 1. 加载类别名称
         List<String> classes = Files.readAllLines(Paths.get(uploadpath + File.separator + names));
         int expectedClassCount = classes.size();
@@ -1808,7 +1820,7 @@ public class AIModelYolo3 {
                                     }
 
                                     // 边界检查并添加检测结果
-                                    if (maxScore > 0.35f && classId < expectedClassCount) {
+                                    if (maxScore > confThreshold && classId < expectedClassCount) {
                                         boxes2d.add(new Rect2d(cx - w / 2, cy - h / 2, w, h));
                                         confidences.add(maxScore);
                                         classIds.add(classId);
@@ -1839,7 +1851,7 @@ public class AIModelYolo3 {
                                     float confidence = hasObjectness ? det[4] * maxScore : maxScore;
 
                                     // 边界检查并添加检测结果
-                                    if (confidence > 0.35f && classId < expectedClassCount) {
+                                    if (confidence > confThreshold && classId < expectedClassCount) {
                                         float cx = det[0], cy = det[1], w = det[2], h = det[3];
                                         boxes2d.add(new Rect2d(cx - w / 2, cy - h / 2, w, h));
                                         confidences.add(confidence);
@@ -1863,7 +1875,7 @@ public class AIModelYolo3 {
                             }
 
                             // 边界检查并添加检测结果
-                            if (confidence > 0.35f && classId < expectedClassCount) {
+                            if (confidence > confThreshold && classId < expectedClassCount) {
                                 float cx = det[0], cy = det[1], w = det[2], h = det[3];
                                 boxes2d.add(new Rect2d(cx - w / 2, cy - h / 2, w, h));
                                 confidences.add(confidence);
@@ -1881,7 +1893,7 @@ public class AIModelYolo3 {
             MatOfFloat confidencesMat = new MatOfFloat(Converters.vector_float_to_Mat(confidences));
             MatOfInt indices = new MatOfInt();
             if (!boxesMat.empty() && !confidencesMat.empty()) {
-                Dnn.NMSBoxes(boxesMat, confidencesMat, 0.1f, 0.5f, indices);
+                Dnn.NMSBoxes(boxesMat, confidencesMat, confThreshold, nmsThreshold, indices);
             }
 
             int[] indicesArr = indices.toArray();
@@ -1929,10 +1941,15 @@ public class AIModelYolo3 {
             return saveName + ".jpg";
         }
     }
-    public static String SendPicOnnxInsightFace(String weight, String names, String picUrl,
+    public static String SendPicOnnxInsightFace(TabAiModel tabAiModel, String picUrl,
                                                 String saveName, String uploadpath, boolean useGpu) throws Exception {
 
         long startTime = System.currentTimeMillis();
+        String weight=tabAiModel.getAiWeights();
+        String names=tabAiModel.getAiNameName();
+
+        float confThreshold=tabAiModel.getThreshold()==null?0.65f:tabAiModel.getThreshold().floatValue();
+        float nmsThreshold=tabAiModel.getNmsThreshold()==null?0.4f:tabAiModel.getNmsThreshold().floatValue();
 
         // 1. 读取图像并预处理
         Mat image = Imgcodecs.imread(uploadpath + File.separator + picUrl);
@@ -2032,7 +2049,7 @@ public class AIModelYolo3 {
                             float rawScore = scores_s8[anchorIdx][0];
                             float score = sigmoid(rawScore);
 
-                            if (score > 0.65f) { // 置信度阈值
+                            if (score > confThreshold) { // 置信度阈值
                                 // anchor center point
                                 float cx = (w + 0.5f) * 8;
                                 float cy = (h + 0.5f) * 8;
@@ -2088,7 +2105,7 @@ public class AIModelYolo3 {
                             float rawScore = scores_s16[anchorIdx][0];
                             float score = sigmoid(rawScore);
 
-                            if (score > 0.65f) {
+                            if (score > confThreshold) {
                                 float cx = (w + 0.5f) * 16;
                                 float cy = (h + 0.5f) * 16;
 
@@ -2139,7 +2156,7 @@ public class AIModelYolo3 {
                             float rawScore = scores_s32[anchorIdx][0];
                             float score = sigmoid(rawScore);
 
-                            if (score > 0.65f) {
+                            if (score > confThreshold) {
                                 float cx = (w + 0.5f) * 32;
                                 float cy = (h + 0.5f) * 32;
 
@@ -2189,7 +2206,7 @@ public class AIModelYolo3 {
             MatOfFloat confidencesMat = new MatOfFloat(Converters.vector_float_to_Mat(confidences));
             MatOfInt indices = new MatOfInt();
             if (!boxesMat.empty() && !confidencesMat.empty()) {
-                Dnn.NMSBoxes(boxesMat, confidencesMat, 0.65f, 0.4f, indices);
+                Dnn.NMSBoxes(boxesMat, confidencesMat, confThreshold, nmsThreshold, indices);
             }
 
             int[] indicesArr = indices.toArray();
@@ -2530,10 +2547,14 @@ public class AIModelYolo3 {
         }
     }
 
-    public static String SendPicYoloV11(String weight, String names, String picUrl, String saveName, String uploadpath,boolean gpuFlag) throws Exception {
+    public static String SendPicYoloV11(TabAiModel tabAiModel, String picUrl, String saveName, String uploadpath,boolean gpuFlag) throws Exception {
         log.info(uploadpath);
         Long a = System.currentTimeMillis();
+        String weight=tabAiModel.getAiWeights();
+        String names=tabAiModel.getAiNameName();
 
+        float confThreshold=tabAiModel.getThreshold()==null?0.3f:tabAiModel.getThreshold().floatValue();
+        float nmsThreshold=tabAiModel.getNmsThreshold()==null?0.2f:tabAiModel.getNmsThreshold().floatValue();
         // 加载类别名称
         List<String> classes = Files.readAllLines(Paths.get(uploadpath + File.separator + names));
         int expectedClassCount = classes.size();
@@ -2571,9 +2592,7 @@ public class AIModelYolo3 {
             return "error";
         }
 
-        // ==========关键修正2: 调整阈值==========
-        float confThreshold = 0.3f;  // 降低置信度阈值
-        float nmsThreshold = 0.2f;   // 调整NMS阈值
+
 
         List<Rect2d> boxes2d = new ArrayList<>();
         List<Float> confidences = new ArrayList<>();
@@ -3951,6 +3970,137 @@ public class AIModelYolo3 {
             colors[i] = new Scalar(b, g, r);
         }
         return colors;
+    }
+
+
+    /**
+     * 识别性别和年龄
+     * @param modelPath genderage.onnx 模型路径（相对路径）
+     * @param imagePath 图片路径（相对路径）
+     * @param faceBox 人脸框
+     * @param uploadpath 基础路径
+     * @param useGpu 是否使用GPU
+     * @return 性别年龄预测结果
+     */
+    public static GenderAgeResult predictGenderAge(String modelPath, String imagePath, FaceBox faceBox,
+                                                   String uploadpath, boolean useGpu) throws Exception {
+
+        // 读取原图
+        Mat image = Imgcodecs.imread(uploadpath + File.separator + imagePath);
+        if (image.empty()) {
+            throw new RuntimeException("无法读取图像: " + imagePath);
+        }
+
+        // 裁剪人脸区域（加一些边距）
+        int padding = 10;
+        int x = Math.max(0, (int) faceBox.getX() - padding);
+        int y = Math.max(0, (int) faceBox.getY() - padding);
+        int width = Math.min((int) faceBox.getWidth() + 2 * padding, image.cols() - x);
+        int height = Math.min((int) faceBox.getHeight() + 2 * padding, image.rows() - y);
+
+        Rect faceRect = new Rect(x, y, width, height);
+        Mat faceCrop = new Mat(image, faceRect);
+
+        // 预处理：resize 到 112x112
+        Mat resized = new Mat();
+        Imgproc.resize(faceCrop, resized, new Size(112, 112));
+        Imgproc.cvtColor(resized, resized, Imgproc.COLOR_BGR2RGB);
+
+        // 归一化：(pixel - 127.5) / 128.0
+        resized.convertTo(resized, CvType.CV_32F);
+        Core.subtract(resized, new Scalar(127.5, 127.5, 127.5), resized);
+        Core.divide(resized, new Scalar(128.0, 128.0, 128.0), resized);
+
+        // HWC -> CHW
+        float[] inputData = matToFloatArrayCHW(resized, 112, 112);
+
+        // ONNX 推理
+        OrtEnvironment env = OrtEnvironment.getEnvironment();
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+        if (useGpu) {
+            options.addCUDA();
+        } else {
+            options.setInterOpNumThreads(4);
+            options.setIntraOpNumThreads(8);
+        }
+
+        try (OrtSession session = env.createSession(uploadpath + File.separator + modelPath, options)) {
+            long[] shape = {1, 3, 112, 112};
+            OnnxTensor inputTensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(inputData), shape);
+            Map<String, OnnxTensor> inputs = Collections.singletonMap(
+                    session.getInputNames().iterator().next(), inputTensor
+            );
+
+            try (OrtSession.Result results = session.run(inputs)) {
+                // 解析性别年龄输出
+                return parseGenderAgeOutput(results, session);
+            } finally {
+                inputTensor.close();
+            }
+        }
+    }
+
+    /**
+     * 解析 genderage 模型输出
+     */
+    private static GenderAgeResult parseGenderAgeOutput(OrtSession.Result results, OrtSession session)
+            throws Exception {
+
+        String gender = "Unknown";
+        float genderConfidence = 0.0f;
+        int age = 0;
+
+        // 获取所有输出名称
+        Set<String> outputNames = session.getOutputNames();
+        System.out.println("模型输出节点: " + outputNames);
+
+        // 遍历所有输出
+        int outputIndex = 0;
+        for (String outputName : outputNames) {
+            OnnxValue value = results.get(outputIndex);
+
+            if (value instanceof OnnxTensor) {
+                OnnxTensor tensor = (OnnxTensor) value;
+                float[] outputData = tensor.getFloatBuffer().array();
+
+                System.out.println("输出 [" + outputName + "] 形状: " +
+                        java.util.Arrays.toString(tensor.getInfo().getShape()));
+                System.out.println("输出 [" + outputName + "] 数据: " +
+                        java.util.Arrays.toString(outputData));
+
+                // 根据输出判断是性别还是年龄
+                if (outputIndex == 0) {
+                    // 第一个输出通常是性别
+                    if (outputData.length == 2) {
+                        // 两个值: [female_prob, male_prob]
+                        float femaleProb = outputData[0];
+                        float maleProb = outputData[1];
+
+                        if (maleProb > femaleProb) {
+                            gender = "Male";
+                            genderConfidence = maleProb;
+                        } else {
+                            gender = "Female";
+                            genderConfidence = femaleProb;
+                        }
+                    } else if (outputData.length == 1) {
+                        // 单个值: >0.5 为男性
+                        float prob = outputData[0];
+                        gender = prob > 0.5 ? "Male" : "Female";
+                        genderConfidence = Math.abs(prob - 0.5f) * 2; // 转换为置信度
+                    }
+                } else if (outputIndex == 1) {
+                    // 第二个输出通常是年龄
+                    age = Math.round(outputData[0]);
+                    // 年龄合理性检查
+                    age = Math.max(0, Math.min(120, age));
+                }
+            }
+
+            outputIndex++;
+        }
+
+        return new GenderAgeResult(gender, genderConfidence, age);
     }
 
 

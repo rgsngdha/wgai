@@ -122,5 +122,11 @@ public class TabAiModel implements Serializable {
     private String endName;
 
 
+    @Excel(name = "识别阈值", width = 15)
+    @ApiModelProperty(value = "识别阈值")
+    private Double  threshold;
 
+    @Excel(name = "重复NMS阈值", width = 15)
+    @ApiModelProperty(value = "识别阈值")
+    private Double  nmsThreshold;
 }

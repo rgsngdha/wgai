@@ -82,12 +82,14 @@ public class identifyTypeNewOnnx {
         String uploadPath = netPush.getUploadPath();
         TabAiModel tabAiModel = netPush.getTabAiModel();
 
+        float thresshold=tabAiModel.getThreshold()==null?0.4f:tabAiModel.getThreshold().floatValue();
+        float nmsThresshold=tabAiModel.getNmsThreshold()==null?0.35f:tabAiModel.getNmsThreshold().floatValue();
 
         long startTime = System.currentTimeMillis();
 
         // ========== 3. 图像预处理 ==========
         Mat processedImage = letterboxResize(image, 640, 640);
-      //  Imgproc.cvtColor(processedImage, processedImage, Imgproc.COLOR_BGR2RGB);
+        Imgproc.cvtColor(processedImage, processedImage, Imgproc.COLOR_BGR2RGB);
         float[] inputData = preprocessImage(processedImage);
 
         // ========== 4. ONNX推理 ==========
@@ -96,7 +98,7 @@ public class identifyTypeNewOnnx {
 
         DetectionResult detectionResult;
         try {
-            detectionResult = runOnnxInference(session, env, inputData, expectedClassCount);
+            detectionResult = runOnnxInference(session, env, inputData, expectedClassCount,thresshold);
         } catch (Exception ex) {
             log.error("ONNX推理失败", ex);
             return false;
@@ -105,7 +107,7 @@ public class identifyTypeNewOnnx {
         // ========== 5. 检测结果验证 ==========
         int detectionCount = detectionResult.confidences.size();
         if (detectionCount <= 0 || detectionCount > 200) {
-            log.warn("{}:检测数量异常: {}-{}", pushInfo.getName(), tabAiModel.getAiName(), detectionCount);
+            log.warn("{}:检测数量异常: {}-{}-阈值{}-nms{}", pushInfo.getName(), tabAiModel.getAiName(), detectionCount,thresshold,nmsThresshold);
             handleNoDetection(pushInfo, netPush, redisTemplate, image, uploadPath, tabAiModel);
             return false;
         }
@@ -113,7 +115,7 @@ public class identifyTypeNewOnnx {
         log.info("NMS前检测框数量: {}", detectionResult.boxes2d.size());
 
         // ========== 6. NMS非极大值抑制 ==========
-        int[] nmsIndices = performNMS(detectionResult, 0.4f, 0.4f);
+        int[] nmsIndices = performNMS(detectionResult, thresshold, nmsThresshold);
         if (nmsIndices.length > 50) {
             setErrorImg(image, "maxIndex");
             log.warn("NMS后检测框数量过多: {}, 超过阈值50", nmsIndices.length);
@@ -207,7 +209,8 @@ public class identifyTypeNewOnnx {
         Integer expectedClassCount = classNames.size();
         String uploadPath = netPush.getUploadPath();
         TabAiModel tabAiModel = netPush.getTabAiModel();
-
+        float confThreshold=tabAiModel.getThreshold()==null?0.45f:tabAiModel.getThreshold().floatValue();
+        float nmsThreshold=tabAiModel.getNmsThreshold()==null?0.4f:tabAiModel.getNmsThreshold().floatValue();
 
         long startTime = System.currentTimeMillis();
 
@@ -226,9 +229,6 @@ public class identifyTypeNewOnnx {
             Map<String, OnnxTensor> inputs = Collections.singletonMap(
                     session.getInputNames().iterator().next(), inputTensor);
 
-            // 6. 推理并解析结果
-            float confThreshold = 0.45f;
-            float nmsThreshold = 0.4f;
 
             List<Rect2d> boxes2d = new ArrayList<>();
             List<Float> confidences = new ArrayList<>();
@@ -730,7 +730,7 @@ public class identifyTypeNewOnnx {
                                              float[] inputData, Integer expectedClassCount) throws Exception {
         long[] shape = new long[]{1, 3, 640, 640};
         DetectionResult result = new DetectionResult();
-        float confThreshold = 0.3f;
+        float confThreshold = 0.35f;
 
         // ✅ 创建新的FloatBuffer并确保position为0
         FloatBuffer buffer = FloatBuffer.allocate(inputData.length);
@@ -1231,6 +1231,10 @@ public class identifyTypeNewOnnx {
         Integer expectedClassCount = classNames.size();
         String uploadPath = netPush.getUploadPath();
         TabAiModel tabAiModel = netPush.getTabAiModel();
+
+        float confThreshold=tabAiModel.getThreshold()==null?0.4f:tabAiModel.getThreshold().floatValue();
+        float nmsThreshold=tabAiModel.getNmsThreshold()==null?0.35f:tabAiModel.getNmsThreshold().floatValue();
+
         String targetClass=netPush.getBeforText();
         long startTime = System.currentTimeMillis();
         log.info("开始ONNX检测，目标类别: {}, 图像尺寸: {}x{}",targetClass,  image.cols(), image.rows());
@@ -1246,7 +1250,7 @@ public class identifyTypeNewOnnx {
 
         DetectionResult detectionResult;
         try {
-            detectionResult = runOnnxInference(session, env, inputData, expectedClassCount);
+            detectionResult = runOnnxInference(session, env, inputData, expectedClassCount,confThreshold);
         } catch (Exception ex) {
             log.error("ONNX推理失败", ex);
             return returnBox;
@@ -1262,7 +1266,7 @@ public class identifyTypeNewOnnx {
         log.info("NMS前检测框数量: {}", detectionResult.boxes2d.size());
 
         // ========== 6. NMS非极大值抑制 ==========
-        int[] nmsIndices = performNMS(detectionResult, 0.4f, 0.45f);
+        int[] nmsIndices = performNMS(detectionResult, confThreshold, nmsThreshold);
         if (nmsIndices.length > 50) {
             setErrorImg(image, "maxIndex");
             log.warn("NMS后检测框数量过多: {}, 超过阈值50", nmsIndices.length);
@@ -1735,11 +1739,11 @@ public class identifyTypeNewOnnx {
      * ONNX推理
      */
     private DetectionResult runOnnxInference(OrtSession session, OrtEnvironment env,
-                                             float[] inputData, Integer expectedClassCount) throws Exception {
+                                             float[] inputData, Integer expectedClassCount,    float confThreshold) throws Exception {
         long[] shape = new long[]{1, 3, 640, 640};
 
         DetectionResult result = new DetectionResult();
-        float confThreshold = 0.45f;
+
 
         try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(inputData), shape)) {
             Map<String, OnnxTensor> inputs = Collections.singletonMap(

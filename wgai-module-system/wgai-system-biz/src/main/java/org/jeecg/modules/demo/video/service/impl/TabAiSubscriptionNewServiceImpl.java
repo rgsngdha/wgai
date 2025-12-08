@@ -307,6 +307,10 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
         if(StringUtils.isNotEmpty(name)){
             tabAiModel.setAiName(name);
         }
+        //设置阈值
+
+        tabAiModel.setThreshold(tabAiModel.getThreshold()==null?0.4:tabAiModel.getThreshold());
+        tabAiModel.setNmsThreshold(tabAiModel.getNmsThreshold()==null?0.4:tabAiModel.getNmsThreshold());
 
         return  tabAiModel;
     }
@@ -587,7 +591,7 @@ public class TabAiSubscriptionNewServiceImpl extends ServiceImpl<TabAiSubscripti
 
             //判断取流方式
             //
-            String imgPath="F:\\360se6\\end2025102411281145662.jpg";
+            String imgPath="C:\\Users\\Administrator\\Videos\\1764928929224.jpg";
             if(tabAiSubscriptionNew.getModelJmType()!=null&&tabAiSubscriptionNew.getModelJmType()==20){
                 identifyTypeNewOnnx identifyTypeNewOnnx=new  identifyTypeNewOnnx();
                 Mat mat = Imgcodecs.imread(imgPath);

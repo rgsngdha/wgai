@@ -143,6 +143,9 @@ public class TabFacePicServiceImpl extends ServiceImpl<TabFacePicMapper, TabFace
     public TabFacePic extractFace(TabFacePic tabFacePic) throws Exception {
 
         TabAiModel tabAiModel=tabAiModelMapper.selectById(tabFacePic.getModelId());
+        float confThreshold=tabAiModel.getThreshold()==null?0.45f:tabAiModel.getThreshold().floatValue();
+        float nmsThreshold=tabAiModel.getNmsThreshold()==null?0.4f:tabAiModel.getNmsThreshold().floatValue();
+
         String faceDetectionModel =tabAiModel.getAiWeights();  // SCRFD-10G 人脸检测模型
         String faceRecognitionModel = tabAiModel.getEndWeights();   // InsightFace 特征提取模型
         String picUrl=tabFacePic.getFacePic();
@@ -166,7 +169,7 @@ public class TabFacePicServiceImpl extends ServiceImpl<TabFacePicMapper, TabFace
                         faces.get(0), upLoadPath, false);
 
                 // 在数据库中搜索匹配的人脸
-                TabFacePic matchedFace = recognizeFace(feature, 0.5f);
+                TabFacePic matchedFace = recognizeFace(feature, confThreshold);
                 if (matchedFace != null) {
                     drawFaceBoxAndLabel( picUrl,   faces.get(0), matchedFace.getFaceName(),  upLoadPath);
                     System.out.println("识别成功：" + matchedFace.getFaceName());

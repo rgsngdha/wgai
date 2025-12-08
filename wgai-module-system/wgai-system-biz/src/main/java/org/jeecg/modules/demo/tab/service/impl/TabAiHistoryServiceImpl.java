@@ -527,25 +527,25 @@ public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, Tab
                 if(tabAiModel1.getModelDify()!=null&&tabAiModel1.getModelDify()==2){ // 1 图像识别  2 姿态识别  3 多边形识别  4图像分割 5.
                     if(tabAiModel1.getModelDifyType()!=null&&tabAiModel1.getModelDifyType()==20){
                         log.info("使用ONNX推理-姿态识别！！！");
-                        savePath=modelYolo3.SendPicYoloV11ONNXPose(tabAiModel1.getAiWeights(),tabAiModel1.getAiNameName(),tabAiModelBund.getSaveUrl(),null,path,gpuFlag);
+                        savePath=modelYolo3.SendPicYoloV11ONNXPose(tabAiModel1,tabAiModelBund.getSaveUrl(),null,path,gpuFlag);
                     }else{
                         log.info("使用opencV推理-姿态识别！！！");
-                        savePath=modelYolo3.SendPicYoloV11CVPose(tabAiModel1.getAiWeights(),tabAiModel1.getAiNameName(),tabAiModelBund.getSaveUrl(),null,path);
+                        savePath=modelYolo3.SendPicYoloV11CVPose(tabAiModel1,tabAiModelBund.getSaveUrl(),null,path);
                     }
                 }else{
                     if(tabAiModel1.getModelDifyType()!=null&&tabAiModel1.getModelDifyType()==20){
                         log.info("使用ONNX推理！！！");
                         if(tabAiModel1.getModelDify()!=null&&tabAiModel1.getModelDify()==8){//人脸定位
                             log.info("人脸定位！");
-                            savePath=modelYolo3.SendPicOnnxInsightFace(tabAiModel1.getAiWeights(),tabAiModel1.getAiNameName(),tabAiModelBund.getSaveUrl(),null,path,gpuFlag);
+                            savePath=modelYolo3.SendPicOnnxInsightFace(tabAiModel1,tabAiModelBund.getSaveUrl(),null,path,gpuFlag);
 
                         }else{
-                            savePath=modelYolo3.SendPicOnnxYoloV11(tabAiModel1.getAiWeights(),tabAiModel1.getAiNameName(),tabAiModelBund.getSaveUrl(),null,path,gpuFlag);
+                            savePath=modelYolo3.SendPicOnnxYoloV11(tabAiModel1,tabAiModelBund.getSaveUrl(),null,path,gpuFlag);
 
                         }
                   }else{
                         log.info("使用opencV推理！！！");
-                        savePath=modelYolo3.SendPicYoloV11(tabAiModel1.getAiWeights(),tabAiModel1.getAiNameName(),tabAiModelBund.getSaveUrl(),null,path,gpuFlag);
+                        savePath=modelYolo3.SendPicYoloV11(tabAiModel1,tabAiModelBund.getSaveUrl(),null,path,gpuFlag);
                     }
 
                 }
