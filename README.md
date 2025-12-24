@@ -68,7 +68,7 @@
 >
 > wgai wgai@2024
 > 
-> 如果对你有用可捐赠一杯咖啡
+> 此项目倾注了我无数个深夜的调试与优化，它永远免费，但绝非无成本，如果您觉得这个工具 能为您节省时间、解决问题，甚至带来一丝愉悦，请考虑赞助一杯咖啡，让我知道：有人在乎这份付出，而这将成为我熬夜修复Bug、添加新功能的最大动力。开源不是用爱发电，您的认可会让它走得更远
 >
 
 > ## 👀 目前已支持功能
@@ -131,7 +131,7 @@
 
 [//]: # (<img src="wg/chatpic.jpg" width="300px"  height="300px">)
 <img src="wg/qqq.jpg" width="300px"  height="500px">
-<img src="wg/wechatqun1.jpg" width="400px"  height="500px">
+<img src="wg/wechatqun3.jpg" width="400px"  height="500px">
 
 [//]: # (<img src="wg/xingqiu.png" width="500px"  height="280px">)
 
