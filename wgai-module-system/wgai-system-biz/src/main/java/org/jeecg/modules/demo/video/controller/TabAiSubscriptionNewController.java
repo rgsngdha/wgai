@@ -159,6 +159,7 @@ public class TabAiSubscriptionNewController extends JeecgController<TabAiSubscri
 	 public Result<String> start(@RequestBody TabAiSubscriptionNew tabAiSubscriptionNew) {
 
 		 try {
+			 log.info("[开始进程 单个执行]");
 			 tabAiSubscriptionNewService.startAi(tabAiSubscriptionNew);
 		 } catch (IOException e) {
 			 throw new RuntimeException(e);

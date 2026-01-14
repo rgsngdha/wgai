@@ -7,20 +7,15 @@ import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.Java2DFrameConverter;
 import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
 import org.jeecg.modules.demo.video.util.RedisCacheHolder;
-import org.jeecg.modules.demo.video.util.identifyTypeNew;
 import org.jeecg.modules.demo.video.util.identifyTypeNewOnnx;
 import org.jeecg.modules.demo.video.util.reture.retureBoxInfo;
 import org.jeecg.modules.tab.AIModel.NetPush;
 import org.opencv.core.Mat;
-import org.opencv.dnn.Net;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import java.awt.image.BufferedImage;
 import java.time.LocalTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -29,65 +24,53 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.jeecg.modules.tab.AIModel.AIModelYolo3.bufferedImageToMat;
 
 /**
- * 优化后的视频处理器 - 解决延迟累积和线程无法终止问题
- * @author wggg
- * @date 2025/5/20 17:41
+ * 视频处理器 - V2.0修复版
+ * 修复：1.移除probe探测 2.简化grabber创建 3.添加超时保护
  */
 @Slf4j
 public class VideoReadPicOnnxNew implements Runnable {
 
     private static final ThreadLocal<TabAiSubscriptionNew> threadLocalPushInfo = new ThreadLocal<>();
-    private final ThreadLocal<Map<String, Net>> threadLocalNetCache = ThreadLocal.withInitial(HashMap::new);
     private final ThreadLocal<identifyTypeNewOnnx> identifyTypeNewLocal = ThreadLocal.withInitial(identifyTypeNewOnnx::new);
-
     private final ThreadLocal<Java2DFrameConverter> converterLocal = ThreadLocal.withInitial(Java2DFrameConverter::new);
+
     private final TabAiSubscriptionNew tabAiSubscriptionNew;
     private final RedisTemplate redisTemplate;
     private final String streamId;
-    // 关键修改1：使用独立的线程池，支持强制终止
+
     private final ExecutorService processingExecutor;
     private final AtomicBoolean forceShutdown = new AtomicBoolean(false);
     private final Set<Future<?>> activeTasks = ConcurrentHashMap.newKeySet();
 
-    // 关键修改2：帧丢弃策略 - 解决延迟累积问题
-    private static final int MAX_PENDING_FRAMES = 3; // 最大排队帧数
+    private static final int MAX_PENDING_FRAMES = 3;
     private final AtomicInteger pendingFrames = new AtomicInteger(0);
     private volatile long lastProcessTime = System.currentTimeMillis();
 
-    // 关键修改3：实时帧率控制
-    private static final long TARGET_FRAME_INTERVAL = 1000; // 500ms一帧(2fps)
+    private static final long TARGET_FRAME_INTERVAL = 1000; // 1秒一帧
     private volatile long lastFrameTime = 0;
 
-    // OpenCV DNN 优化 - 线程本地存储
-    private static final ThreadLocal<Map<String, Net>> DNN_NET_CACHE =
-            ThreadLocal.withInitial(() -> new HashMap<>());
-
-    // 性能监控
     private final AtomicLong processedFrames = new AtomicLong(0);
     private final AtomicLong droppedFrames = new AtomicLong(0);
     private volatile long lastLogTime = 0;
 
-    // 资源管理
-    private static volatile Java2DFrameConverter SHARED_CONVERTER;
-    private final BlockingQueue<Mat> matPool = new LinkedBlockingQueue<>(20); // 减小池大小
+    private final BlockingQueue<Mat> matPool = new LinkedBlockingQueue<>(20);
     private final BlockingQueue<BufferedImage> imagePool = new LinkedBlockingQueue<>(20);
 
     public VideoReadPicOnnxNew(TabAiSubscriptionNew tabAiSubscriptionNew, RedisTemplate redisTemplate) {
         this.tabAiSubscriptionNew = tabAiSubscriptionNew;
         this.redisTemplate = redisTemplate;
-        this.streamId=tabAiSubscriptionNew.getId();
-        // 创建专用线程池 - 支持强制终止
+        this.streamId = tabAiSubscriptionNew.getId();
+
         this.processingExecutor = new ThreadPoolExecutor(
-                1, // 核心线程数减少
-                1, // 最大线程数减少
+                1, 1,
                 60L, TimeUnit.SECONDS,
-                new ArrayBlockingQueue<>(5), // 限制队列大小，防止积压
+                new ArrayBlockingQueue<>(5),
                 r -> {
                     Thread t = new Thread(r, "VideoProcessor-" + tabAiSubscriptionNew.getName());
-                    t.setDaemon(true); // 设置为守护线程
+                    t.setDaemon(true);
                     return t;
                 },
-                new ThreadPoolExecutor.CallerRunsPolicy() // 队列满时在调用线程执行
+                new ThreadPoolExecutor.CallerRunsPolicy()
         );
     }
 
@@ -95,27 +78,47 @@ public class VideoReadPicOnnxNew implements Runnable {
     public void run() {
         threadLocalPushInfo.set(tabAiSubscriptionNew);
         FFmpegFrameGrabber grabber = null;
+
+        log.info("========== [VideoReadPicOnnxNew启动] ==========");
+        log.info("[流信息] 名称: {}, ID: {}", tabAiSubscriptionNew.getName(), tabAiSubscriptionNew.getId());
+        log.info("[视频URL] {}", tabAiSubscriptionNew.getBeginEventTypes());
+
+        // ========== ✅ 修复1：使用超时机制创建grabber ==========
         try {
-            grabber = createOptimizedGrabber();
-        }catch (Exception e){
-            log.error("[流创建失败，线程即将退出但不影响其他流] 流: {}, 错误: {}",
-                    tabAiSubscriptionNew.getName(),
-                    e.getMessage());
+            log.info("[准备创建grabber] 流: {}", tabAiSubscriptionNew.getName());
 
-            // 更新Redis状态，标记该流不可用
-//            try {
-//                redisTemplate.opsForValue(tabAiSubscriptionNew.getId() + "newRunPush", false);
-//                RedisCacheHolder.set(tabAiSubscriptionNew.getId() + "_error_info",
-//                        "流创建失败: " + e.getMessage());
-//            } catch (Exception redisEx) {
-//                log.warn("[更新Redis状态失败]: {}", redisEx.getMessage());
-//            }
+            // 使用Future来限制创建时间
+            ExecutorService grabberCreator = Executors.newSingleThreadExecutor();
+            Future<FFmpegFrameGrabber> grabberFuture = grabberCreator.submit(() -> {
+                log.info("[子线程] 开始创建grabber");
+                FFmpegFrameGrabber g = createOptimizedGrabberSimple();
+                log.info("[子线程] grabber创建成功");
+                return g;
+            });
 
-            return; // 直接退出，不影响其他线程
+            try {
+                grabber = grabberFuture.get(60, TimeUnit.SECONDS); // 60秒超时
+                log.info("[✓ grabber创建成功] 流: {}", tabAiSubscriptionNew.getName());
+            } catch (TimeoutException e) {
+                log.error("[❌ grabber创建超时] 流: {}, 超过60秒", tabAiSubscriptionNew.getName());
+                grabberFuture.cancel(true);
+                grabberCreator.shutdownNow();
+                return;
+            } catch (Exception e) {
+                log.error("[❌ grabber创建失败] 流: {}", tabAiSubscriptionNew.getName(), e);
+                grabberCreator.shutdownNow();
+                return;
+            } finally {
+                grabberCreator.shutdown();
+            }
+
+        } catch (Exception e) {
+            log.error("[流创建异常] 流: {}", tabAiSubscriptionNew.getName(), e);
+            return;
         }
 
+        // ========== 正常处理流程 ==========
         try {
-
             identifyTypeNewOnnx identifyTypeAll = identifyTypeNewLocal.get();
             List<NetPush> netPushList = threadLocalPushInfo.get().getNetPushList();
 
@@ -123,22 +126,22 @@ public class VideoReadPicOnnxNew implements Runnable {
             int consecutiveNullFrames = 0;
 
             while (!forceShutdown.get()) {
-                // 检查停止标志 - 更频繁的检查
                 if (!isStreamActive()) {
-                    log.warn("[主动停止推送]{}", tabAiSubscriptionNew.getName());
+                    log.warn("[主动停止] {}", tabAiSubscriptionNew.getName());
                     break;
                 }
 
-                if(tabAiSubscriptionNew.getDifyStartEnd()!=null&&tabAiSubscriptionNew.getDifyStartTime()!=null){
-                    int startHour = tabAiSubscriptionNew.getDifyStartTime(); // 开始小时
-                    int endHour = tabAiSubscriptionNew.getDifyStartEnd();    // 结束小时
-
-                    LocalTime now = LocalTime.now();  // 当前时间（时分秒）
+                // 时间段控制
+                if (tabAiSubscriptionNew.getDifyStartEnd() != null && tabAiSubscriptionNew.getDifyStartTime() != null) {
+                    int startHour = tabAiSubscriptionNew.getDifyStartTime();
+                    int endHour = tabAiSubscriptionNew.getDifyStartEnd();
+                    LocalTime now = LocalTime.now();
                     LocalTime start = LocalTime.of(startHour, 0);
                     LocalTime end = LocalTime.of(endHour, 0);
 
                     if (now.isBefore(start) || now.isAfter(end)) {
-                        log.info("当前时间不在有效时段 ({}~{})，跳过", startHour, endHour);
+                        log.debug("不在有效时段 ({}~{})", startHour, endHour);
+                        Thread.sleep(5000);
                         continue;
                     }
                 }
@@ -147,77 +150,68 @@ public class VideoReadPicOnnxNew implements Runnable {
                 if (frame == null) {
                     consecutiveNullFrames++;
                     if (consecutiveNullFrames > 10) {
-                        log.info("[连续空帧过多，重启视频流]");
+                        log.warn("[连续空帧，重启] 流: {}", tabAiSubscriptionNew.getName());
                         grabber = restartGrabber(grabber);
                         consecutiveNullFrames = 0;
                     }
-                    Thread.sleep(100); // 减少等待时间
+                    Thread.sleep(100);
                     continue;
                 }
                 consecutiveNullFrames = 0;
 
-                // 关键修改4：严格的实时帧率控制
+                // 帧率控制
                 long currentTime = System.currentTimeMillis();
                 if (currentTime - lastFrameTime < TARGET_FRAME_INTERVAL) {
-                    frame.close(); // 立即释放不需要的帧
+                    frame.close();
                     continue;
                 }
                 lastFrameTime = currentTime;
 
-                // 关键修改5：队列长度控制 - 防止延迟累积
+                // 队列控制
                 if (pendingFrames.get() >= MAX_PENDING_FRAMES) {
-                    log.debug("[丢弃帧以防止延迟累积] 当前排队: {}", pendingFrames.get());
+                    log.debug("[丢帧] 排队: {}", pendingFrames.get());
                     frame.close();
                     droppedFrames.incrementAndGet();
                     continue;
                 }
 
-                // 异步处理帧 - 改进版
-                processFrameAsyncOptimized(frame, netPushList, identifyTypeAll);
-
-                // 性能监控
+                processFrameAsync(frame, netPushList, identifyTypeAll);
                 logPerformanceStats();
             }
 
         } catch (Exception exception) {
             log.error("[处理异常]", exception);
         } finally {
-            log.info("[开始清理资源]");
+            log.info("[开始清理资源] 流: {}", tabAiSubscriptionNew.getName());
             forceCleanup(grabber);
         }
     }
 
-    /**
-     * 关键修改6：优化的异步帧处理 - 解决延迟问题
-     */
-    private void processFrameAsyncOptimized(Frame frame, List<NetPush> netPushList, identifyTypeNewOnnx identifyTypeAll) {
+    private void processFrameAsync(Frame frame, List<NetPush> netPushList, identifyTypeNewOnnx identifyTypeAll) {
         if (forceShutdown.get()) {
             frame.close();
             return;
         }
-        // 创建Frame的副本
+
         Frame frameClone = null;
         try {
             frameClone = frame.clone();
         } catch (Exception e) {
-            log.error("[Frame克隆失败]: {}", e.getMessage());
-            processedFrames.decrementAndGet();
+            log.warn("[Frame克隆失败]", e);
             return;
         }
+
         pendingFrames.incrementAndGet();
         final Frame finalFrame = frameClone;
+
         Future<?> future = processingExecutor.submit(() -> {
             long startTime = System.currentTimeMillis();
             BufferedImage image = null;
             Mat matInfo = null;
 
             try {
-                // 快速检查是否需要终止
-                if (forceShutdown.get()) {
-                    return;
-                }
+                if (forceShutdown.get()) return;
 
-                // 快速转换
                 Java2DFrameConverter converter = converterLocal.get();
                 image = converter.getBufferedImage(finalFrame);
 
@@ -225,34 +219,26 @@ public class VideoReadPicOnnxNew implements Runnable {
                     return;
                 }
 
-                // 再次检查终止标志
-                if (forceShutdown.get()) {
-                    return;
-                }
+                if (forceShutdown.get()) return;
 
                 matInfo = bufferedImageToMat(image);
                 if (matInfo == null || matInfo.empty()) {
                     return;
                 }
 
-                // 处理推理 - 加入超时控制
                 long inferenceStart = System.currentTimeMillis();
                 for (NetPush netPush : netPushList) {
-                    if (forceShutdown.get()) {
-                        break;
-                    }
+                    if (forceShutdown.get()) break;
 
-
-                    // 检查单个推理超时(10秒)
                     if (System.currentTimeMillis() - inferenceStart > 10000) {
-                        log.warn("[推理超时，跳过剩余处理]");
+                        log.warn("[推理超时，跳过]");
                         break;
                     }
 
                     Mat mat = getMat();
                     try {
                         matInfo.copyTo(mat);
-                        processNetPushOptimized(mat, netPush, identifyTypeAll);
+                        processNetPush(mat, netPush, identifyTypeAll);
                     } finally {
                         returnMat(mat);
                     }
@@ -260,174 +246,122 @@ public class VideoReadPicOnnxNew implements Runnable {
 
                 processedFrames.incrementAndGet();
                 lastProcessTime = System.currentTimeMillis();
-                //setBeforeImg(matInfo,"cc");
-                // 性能警告
+
                 long totalTime = System.currentTimeMillis() - startTime;
                 if (totalTime > 10000) {
-                    log.warn("[帧处理耗时过长: {}ms] 可能导致延迟累积", totalTime);
+                    log.warn("[帧处理耗时: {}ms]", totalTime);
                 }
 
             } catch (Exception e) {
                 log.error("[帧处理异常]", e);
             } finally {
-                // 快速资源清理
-                if (matInfo != null) {
-                    returnMat(matInfo);
-                }
-                if (image != null) {
-                    returnBufferedImage(image);
-                }
-                if (frame != null) {
-                    frame.close();
-                }
+                if (matInfo != null) returnMat(matInfo);
+                if (image != null) returnBufferedImage(image);
+                if (finalFrame != null) finalFrame.close();
                 pendingFrames.decrementAndGet();
             }
         });
 
-        // 跟踪活跃任务
         activeTasks.add(future);
-
-        // 清理已完成的任务
         activeTasks.removeIf(Future::isDone);
     }
 
-    /**
-     * 关键修改7：优化的推理处理 - 使用线程本地DNN网络
-     */
-    private void processNetPushOptimized(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll) {
+    private void processNetPush(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll) {
         try {
-            if (forceShutdown.get()) {
-                return;
-            }
+            if (forceShutdown.get()) return;
 
-
-
-            if (netPush.getIsBefor() == 0) {  //有前置
-                processWithPredecessorsOptimized(mat, netPush, identifyTypeAll);
+            if (netPush.getIsBefor() == 0) {
+                processWithPredecessors(mat, netPush, identifyTypeAll);
             } else {
-                executeDetectionOptimized(mat, netPush, identifyTypeAll,null);
+                executeDetection(mat, netPush, identifyTypeAll, null);
             }
 
         } catch (Exception e) {
-            log.error("[处理NetPush异常] 模型: {}",
-                    netPush.getTabAiModel() != null ? netPush.getTabAiModel().getAiName() : "unknown", e);
+            log.error("[处理NetPush异常]", e);
         }
     }
 
-    /**
-     * 克隆DNN网络 - 为每个线程创建独立实例
-     */
-    private Net cloneDnnNet(Net originalNet) {
-        // 这里需要根据你的实际情况实现DNN网络克隆
-        // 一般是重新加载模型文件
-        return originalNet; // 临时返回原网络，需要根据实际情况修改
-    }
-
-    public void executeDetectionOptimized(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll,List<retureBoxInfo> retureBoxInfos) {
+    public void executeDetection(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll,
+                                 List<retureBoxInfo> retureBoxInfos) {
         try {
-            if (forceShutdown.get()) {
-                return;
-            }
+            if (forceShutdown.get()) return;
 
-            // 添加推理超时检查
             long inferenceStart = System.currentTimeMillis();
 
-            //不再支持V3 只支持v5-v11 1.图像 2.人体姿态
-            if(netPush.getDifyType()==2){
-                identifyTypeAll.detectObjectsDifyOnnxV5Pose(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
-            }else{
-                if(netPush.getIsBeforZoom()==0){//开启区域放大
-                    identifyTypeAll.detectObjectsDifyOnnxV5WithROI(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
-                }else{
-                    identifyTypeAll.detectObjectsDifyOnnxV5(tabAiSubscriptionNew, mat, netPush, redisTemplate,retureBoxInfos);
+            if (netPush.getDifyType() == 2) {
+                identifyTypeAll.detectObjectsDifyOnnxV5Pose(tabAiSubscriptionNew, mat, netPush, redisTemplate, retureBoxInfos);
+            } else {
+                if (netPush.getIsBeforZoom() == 0) {
+                    identifyTypeAll.detectObjectsDifyOnnxV5WithROI(tabAiSubscriptionNew, mat, netPush, redisTemplate, retureBoxInfos);
+                } else {
+                    identifyTypeAll.detectObjectsDifyOnnxV5(tabAiSubscriptionNew, mat, netPush, redisTemplate, retureBoxInfos);
                 }
             }
 
-
-
             long inferenceTime = System.currentTimeMillis() - inferenceStart;
             if (inferenceTime > 1000) {
-                log.warn("[推理耗时过长: {}ms] 模型: {}", inferenceTime, netPush.getTabAiModel().getAiName());
+                log.warn("[推理耗时: {}ms]", inferenceTime);
             }
 
         } catch (Exception e) {
-            log.error("[执行检测异常] 模型类型: {}", netPush.getModelType(), e);
+            log.error("[执行检测异常]", e);
         }
     }
 
-    public void processWithPredecessorsOptimized(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll) {
+    public void processWithPredecessors(Mat mat, NetPush netPush, identifyTypeNewOnnx identifyTypeAll) {
         List<NetPush> before = netPush.getListNetPush();
-        if (before == null || before.isEmpty()) {
-            return;
-        }
-        retureBoxInfo validationPassed=null;
+        if (before == null || before.isEmpty()) return;
+
+        retureBoxInfo validationPassed = null;
         for (int i = 0; i < before.size(); i++) {
-            if (forceShutdown.get()) {
-                break;
-            }
+            if (forceShutdown.get()) break;
 
             NetPush beforePush = before.get(i);
 
             if (i == 0) {
-                validationPassed = validateFirstModelOptimized(mat, beforePush, identifyTypeAll);
-                if (validationPassed!=null&&!validationPassed.isFlag()) {
-                    log.warn("[第一个模型验证失败，终止后续处理]");
+                validationPassed = validateFirstModel(mat, beforePush, identifyTypeAll);
+                if (validationPassed == null || !validationPassed.isFlag()) {
+                    log.debug("[第一个模型验证失败]");
                     break;
                 }
             } else {
-                if(validationPassed==null||validationPassed.getInfoList().size()<=0){
-                    log.warn("[前置内容为空,终止后续处理]");
+                if (validationPassed == null || validationPassed.getInfoList().size() <= 0) {
+                    log.debug("[前置内容为空]");
                     break;
                 }
-                executeDetectionOptimized(mat, beforePush, identifyTypeAll,validationPassed.getInfoList());
+                executeDetection(mat, beforePush, identifyTypeAll, validationPassed.getInfoList());
             }
         }
     }
 
-    private retureBoxInfo validateFirstModelOptimized(Mat mat, NetPush beforePush, identifyTypeNewOnnx identifyTypeAll) {
+    private retureBoxInfo validateFirstModel(Mat mat, NetPush beforePush, identifyTypeNewOnnx identifyTypeAll) {
         try {
-            if (forceShutdown.get()) {
-                return null;
-            }
-
-            return identifyTypeAll.detectObjectsV5Onnx(
-                        tabAiSubscriptionNew, mat, beforePush,redisTemplate);
-
+            if (forceShutdown.get()) return null;
+            return identifyTypeAll.detectObjectsV5Onnx(tabAiSubscriptionNew, mat, beforePush, redisTemplate);
         } catch (Exception e) {
             log.error("[验证模型异常]", e);
             return null;
         }
     }
 
-    /**
-     * 关键修改9：强制清理 - 确保线程能够终止
-     */
     private void forceCleanup(FFmpegFrameGrabber grabber) {
-        log.info("[开始强制清理] 流: {}", tabAiSubscriptionNew.getName());
+        log.info("[强制清理] 流: {}", tabAiSubscriptionNew.getName());
 
-        // 1. 设置强制停止标志
         forceShutdown.set(true);
 
-        // 2. 取消所有活跃任务
-        log.info("[取消活跃任务数量: {}]", activeTasks.size());
+        log.info("[取消任务: {}个]", activeTasks.size());
         activeTasks.forEach(future -> {
-            if (!future.isDone()) {
-                boolean cancelled = future.cancel(true);
-                log.debug("[任务取消结果: {}]", cancelled);
-            }
+            if (!future.isDone()) future.cancel(true);
         });
         activeTasks.clear();
 
-        // 3. 强制关闭线程池
         processingExecutor.shutdown();
         try {
             if (!processingExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                List<Runnable> pendingTasks = processingExecutor.shutdownNow();
-                log.warn("[强制终止线程池，剩余任务: {}]", pendingTasks.size());
-
-                // 再等待2秒
+                List<Runnable> pending = processingExecutor.shutdownNow();
+                log.warn("[强制终止线程池，剩余: {}]", pending.size());
                 if (!processingExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
-                    log.error("[线程池无法完全终止]");
+                    log.error("[线程池无法终止]");
                 }
             }
         } catch (InterruptedException e) {
@@ -435,57 +369,47 @@ public class VideoReadPicOnnxNew implements Runnable {
             Thread.currentThread().interrupt();
         }
 
-        // 4. 释放视频资源
         if (grabber != null) {
             try { grabber.stop(); } catch (Exception ignored) {}
             try { grabber.release(); } catch (Exception ignored) {}
         }
 
-        // 5. 清理对象池
         clearObjectPools();
 
-        // 6. 清理ThreadLocal
         try {
-            DNN_NET_CACHE.remove();
             identifyTypeNewLocal.remove();
             threadLocalPushInfo.remove();
+            converterLocal.remove();
         } catch (Exception e) {
             log.warn("[ThreadLocal清理异常]", e);
         }
 
-        log.info("[强制清理完成] 流: {}", tabAiSubscriptionNew.getName());
+        log.info("[✓ 清理完成] 流: {}", tabAiSubscriptionNew.getName());
     }
 
     private void clearObjectPools() {
         Mat mat;
         while ((mat = matPool.poll()) != null) {
-            try {
-                mat.release();
-            } catch (Exception e) {
-                log.debug("[Mat释放异常]", e);
-            }
+            try { mat.release(); } catch (Exception ignored) {}
         }
         imagePool.clear();
     }
 
     private void logPerformanceStats() {
         long currentTime = System.currentTimeMillis();
-        if (currentTime - lastLogTime > 30000) { // 每30秒
+        if (currentTime - lastLogTime > 30000) {
             long processed = processedFrames.get();
             long dropped = droppedFrames.get();
             int pending = pendingFrames.get();
-
-            // 计算实时延迟
             long processingDelay = currentTime - lastProcessTime;
 
-            log.info("[性能统计] 已处理: {}, 丢弃: {}, 排队中: {}, 处理延迟: {}ms, 丢帧率: {}%",
+            log.info("[性能] 已处理: {}, 丢弃: {}, 排队: {}, 延迟: {}ms, 丢帧率: {:.2f}%",
                     processed, dropped, pending, processingDelay,
                     processed > 0 ? (double) dropped / (processed + dropped) * 100 : 0);
 
             lastLogTime = currentTime;
         }
     }
-
 
     private Mat getMat() {
         Mat mat = matPool.poll();
@@ -531,74 +455,66 @@ public class VideoReadPicOnnxNew implements Runnable {
             grabber.stop();
             grabber.release();
         }
-        return createOptimizedGrabber();
+        return createOptimizedGrabberSimple();
     }
 
-    public FFmpegFrameGrabber createOptimizedGrabber() throws Exception {
+    // ========== ✅ 修复2：简化grabber创建，移除probe ==========
+    public FFmpegFrameGrabber createOptimizedGrabberSimple() throws Exception {
+        log.info("[创建grabber] URL: {}", tabAiSubscriptionNew.getBeginEventTypes());
 
-        // 第一步：先探测流信息
-        FFmpegFrameGrabber probe = new FFmpegFrameGrabber(tabAiSubscriptionNew.getBeginEventTypes());
-        probe.setOption("rtsp_transport", "tcp");
-        probe.setOption("stimeout", "5000000");
-        probe.start();
-        String codecName = probe.getVideoCodecName();
-        int codecId = probe.getVideoCodec();
-        probe.stop();
-        probe.close();
-        probe.release();
-        log.info(" 检测到视频编码: " + codecName + " (ID=" + codecId + ")");
         FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(tabAiSubscriptionNew.getBeginEventTypes());
 
         // GPU设置
         if (tabAiSubscriptionNew.getEventTypes().equals("1")) {
-
-
             grabber.setOption("hwaccel", "cuda");
             grabber.setOption("hwaccel_device", "0");
             grabber.setOption("hwaccel_output_format", "cuda");
-            log.info("[使用GPU_CUDA加速解码]");
-        }else if(tabAiSubscriptionNew.getEventTypes().equals("4")){
-            //intel 加速
-            grabber.setOption("hwaccel", "qsv");          // Intel QuickSync
-           //grabber.setVideoCodecName("hevc_qsv");         // H.265 QSV
-            if ("h264".equalsIgnoreCase(codecName)) {
-                grabber.setVideoCodecName("h264_qsv");
-            } else if ("hevc".equalsIgnoreCase(codecName) || "hevc1".equalsIgnoreCase(codecName)) {
-                grabber.setVideoCodecName("hevc_qsv");
-            }
-            log.info("[使用Intel加速解码]");
+            log.info("[GPU加速]");
+        } else if (tabAiSubscriptionNew.getEventTypes().equals("4")) {
+            grabber.setOption("hwaccel", "qsv");
+            log.info("[Intel加速]");
         }
+
         // 基础设置
         grabber.setOption("loglevel", "-8");
         grabber.setOption("rtsp_transport", "tcp");
         grabber.setOption("rtsp_flags", "prefer_tcp");
-        grabber.setOption("stimeout", "3000000");
+
+        // ========== ✅ 修复3：缩短超时时间，快速失败 ==========
+        grabber.setOption("stimeout", "10000000");   // 10秒连接超时（原5秒）
+        grabber.setOption("rw_timeout", "10000000"); // 10秒读写超时
+        grabber.setOption("timeout", "10000000");    // 10秒总超时
 
         grabber.setPixelFormat(avutil.AV_PIX_FMT_BGR24);
 
         // 实时流优化
         grabber.setOption("flags", "low_delay");
         grabber.setOption("max_delay", "500000");
-        grabber.setOption("buffer_size", "512000"); // 减小缓冲区
+        grabber.setOption("buffer_size", "512000");
         grabber.setOption("fflags", "nobuffer+flush_packets+discardcorrupt");
-        grabber.setOption("flags", "low_delay");
         grabber.setOption("flags2", "fast");
-        grabber.setOption("err_detect", "compliant");   // 严格错误检测
+        grabber.setOption("err_detect", "compliant");
         grabber.setOption("framedrop", "1");
 
-        // 严格的实时设置
-        grabber.setFrameRate(2.0); // 2fps
-        grabber.setOption("r", "2"); // 输入帧率限制
+        grabber.setFrameRate(2.0);
+        grabber.setOption("r", "2");
 
-        grabber.start();
+        log.info("[开始start] 可能阻塞...");
+        long startTime = System.currentTimeMillis();
+
+        grabber.start(); // 可能阻塞，但有超时保护
+
+        long duration = System.currentTimeMillis() - startTime;
+        log.info("[✓ start完成] 耗时: {}ms", duration);
+
         return grabber;
     }
 
     /**
-     * 外部调用的停止方法
+     * 外部停止方法
      */
     public void forceStop() {
-        log.info("[外部请求强制停止] 流: {}", tabAiSubscriptionNew.getName());
+        log.info("[外部请求停止] 流: {}", tabAiSubscriptionNew.getName());
         forceShutdown.set(true);
     }
 }
