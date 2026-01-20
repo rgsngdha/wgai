@@ -1723,7 +1723,358 @@ public class AIModelYolo3 {
         }
     }
 
+    /**
+     * YOLOv11 实例分割模型推理 (ONNX Runtime)
+     */
+    public static String SendPicOnnxYoloV11Seg(TabAiModel tabAiModel, String picUrl,
+                                               String saveName, String uploadpath, boolean useGpu) throws Exception {
+        long startTime = System.currentTimeMillis();
+        String weight = tabAiModel.getAiWeights();
+        String names = tabAiModel.getAiNameName();
 
+        float confThreshold = tabAiModel.getThreshold() == null ? 0.3f : tabAiModel.getThreshold().floatValue();
+        float nmsThreshold = tabAiModel.getNmsThreshold() == null ? 0.2f : tabAiModel.getNmsThreshold().floatValue();
+
+        // 1. 加载类别名称
+        List<String> classes = Files.readAllLines(Paths.get(uploadpath + File.separator + names));
+        int expectedClassCount = classes.size();
+
+        // 2. 读取图像并预处理
+        Mat image = Imgcodecs.imread(uploadpath + File.separator + picUrl);
+        log.info("原始图片尺寸: {}x{}", image.cols(), image.rows());
+
+        Mat processedImage = letterboxResize(image, 640, 640);
+        Imgproc.cvtColor(processedImage, processedImage, Imgproc.COLOR_BGR2RGB);
+
+        // HWC -> CHW
+        Mat blob = new Mat();
+        processedImage.convertTo(blob, CvType.CV_32F, 1.0 / 255.0);
+        List<Mat> channels = new ArrayList<>();
+        Core.split(blob, channels);
+        float[] inputData = new float[3 * 640 * 640];
+        for (int c = 0; c < 3; c++) {
+            float[] data = new float[640 * 640];
+            channels.get(c).get(0, 0, data);
+            System.arraycopy(data, 0, inputData, c * 640 * 640, 640 * 640);
+        }
+
+        // 3. 创建 ONNX Runtime 环境
+        OrtEnvironment env = OrtEnvironment.getEnvironment();
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+        if (useGpu) {
+            options.addCUDA();
+            log.info("使用ONNX GPU");
+        } else {
+            log.info("使用ONNX CPU");
+            options.setInterOpNumThreads(4);
+            options.setIntraOpNumThreads(8);
+            options.addCPU(true);
+        }
+
+        try (OrtSession session = env.createSession(uploadpath + File.separator + weight, options)) {
+            // 4. 构建输入
+            long[] shape = new long[]{1, 3, 640, 640};
+            OnnxTensor inputTensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(inputData), shape);
+            Map<String, OnnxTensor> inputs = Collections.singletonMap(
+                    session.getInputNames().iterator().next(), inputTensor);
+
+            // 5. 推理
+            List<Rect2d> boxes2d = new ArrayList<>();
+            List<Float> confidences = new ArrayList<>();
+            List<Integer> classIds = new ArrayList<>();
+            List<float[]> maskCoeffsList = new ArrayList<>();
+
+            float[][][][] protoOutput = null;
+            int numMasks = 0;
+
+            try (OrtSession.Result results = session.run(inputs)) {
+                log.info("模型输出数量: {}", results.size());
+
+                int outputIndex = 0;
+                for (Map.Entry<String, OnnxValue> entry : results) {
+                    OnnxValue value = entry.getValue();
+                    if (!(value instanceof OnnxTensor)) continue;
+
+                    OnnxTensor tensor = (OnnxTensor) value;
+                    long[] tensorShape = tensor.getInfo().getShape();
+                    Object rawOutput = tensor.getValue();
+
+                    log.info("输出 {} - 形状: {}", outputIndex++, Arrays.toString(tensorShape));
+
+                    // ========== 处理4维原型输出 [1, 32, 160, 160] ==========
+                    if (tensorShape.length == 4 && rawOutput instanceof float[][][][]) {
+                        protoOutput = (float[][][][]) rawOutput;
+                        numMasks = (int) tensorShape[1];
+                        log.info("识别为Mask原型输出: [{}, {}, {}, {}]",
+                                tensorShape[0], tensorShape[1], tensorShape[2], tensorShape[3]);
+                        continue;
+                    }
+
+                    // ========== 处理3维检测输出 [1, 51, 8400] ==========
+                    if (tensorShape.length == 3 && rawOutput instanceof float[][][]) {
+                        float[][][] batch = (float[][][]) rawOutput;
+
+                        int numFeatures = (int) tensorShape[1];  // 51
+                        int numDetections = (int) tensorShape[2]; // 8400
+
+                        // 计算：51 = 4(bbox) + classes + masks
+                        // 如果已知masks数，则: numClasses = 51 - 4 - 32 = 15
+                        int numClasses;
+                        if (numMasks > 0) {
+                            numClasses = numFeatures - 4 - numMasks;
+                        } else {
+                            // 如果原型输出还未处理，先假设有32个mask
+                            numMasks = 32;
+                            numClasses = numFeatures - 4 - numMasks;
+                        }
+
+                        log.info("检测输出: {} features, {} detections", numFeatures, numDetections);
+                        log.info("计算: {} classes, {} masks", numClasses, numMasks);
+
+                        if (numClasses != expectedClassCount) {
+                            log.warn("警告: 计算类别数({}) != 期望类别数({})", numClasses, expectedClassCount);
+                        }
+
+                        // YOLOv11格式需要转置: [51, 8400] -> 按列遍历
+                        for (float[][] detections : batch) {
+                            for (int i = 0; i < numDetections; i++) {
+                                // 提取bbox
+                                float cx = detections[0][i];
+                                float cy = detections[1][i];
+                                float w = detections[2][i];
+                                float h = detections[3][i];
+
+                                // 提取类别分数
+                                float maxScore = 0;
+                                int classId = 0;
+                                for (int c = 0; c < numClasses; c++) {
+                                    float score = detections[4 + c][i];
+                                    if (score > maxScore) {
+                                        maxScore = score;
+                                        classId = c;
+                                    }
+                                }
+
+                                // 过滤并保存检测结果
+                                if (maxScore > confThreshold && classId < expectedClassCount) {
+                                    boxes2d.add(new Rect2d(cx - w / 2, cy - h / 2, w, h));
+                                    confidences.add(maxScore);
+                                    classIds.add(classId);
+
+                                    // 提取mask系数
+                                    float[] maskCoeffs = new float[numMasks];
+                                    for (int m = 0; m < numMasks; m++) {
+                                        maskCoeffs[m] = detections[4 + numClasses + m][i];
+                                    }
+                                    maskCoeffsList.add(maskCoeffs);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            log.info("NMS前检测框数量: {}", boxes2d.size());
+
+            // 6. NMS
+            MatOfRect2d boxesMat = new MatOfRect2d();
+            boxesMat.fromList(boxes2d);
+            MatOfFloat confidencesMat = new MatOfFloat(Converters.vector_float_to_Mat(confidences));
+            MatOfInt indices = new MatOfInt();
+
+            if (!boxesMat.empty() && !confidencesMat.empty()) {
+                Dnn.NMSBoxes(boxesMat, confidencesMat, confThreshold, nmsThreshold, indices);
+            }
+
+            int[] indicesArr = indices.toArray();
+            log.info("NMS后检测框数量: {}", indicesArr.length);
+
+            // 7. 计算坐标还原参数
+            double scale = Math.min(640.0 / image.cols(), 640.0 / image.rows());
+            double dx = (640 - image.cols() * scale) / 2;
+            double dy = (640 - image.rows() * scale) / 2;
+
+            // 8. 生成并绘制分割mask
+            Mat maskOverlay = Mat.zeros(image.size(), CvType.CV_8UC3);
+
+            int colorIdx = 0;
+            for (int idx : indicesArr) {
+                Rect2d box = boxes2d.get(idx);
+                int clsId = classIds.get(idx);
+                float conf = confidences.get(idx);
+
+                if (clsId >= classes.size()) {
+                    log.warn("跳过无效类别ID: {}", clsId);
+                    continue;
+                }
+
+                // 还原到原图坐标
+                double x = (box.x - dx) / scale;
+                double y = (box.y - dy) / scale;
+                double width = box.width / scale;
+                double height = box.height / scale;
+
+                x = Math.max(0, Math.min(x, image.cols() - 1));
+                y = Math.max(0, Math.min(y, image.rows() - 1));
+                width = Math.min(width, image.cols() - x);
+                height = Math.min(height, image.rows() - y);
+
+                log.info("检测: {} { } [{ },{ },{ },{ }]",
+                        classes.get(clsId), conf, x, y, width, height);
+
+                Scalar color = CommonColors(colorIdx);
+
+                // ========== 生成实例mask并绘制轮廓 ==========
+                if (protoOutput != null && idx < maskCoeffsList.size()) {
+                    try {
+                        Mat instanceMask = generateInstanceMaskOnnx(
+                                protoOutput,
+                                maskCoeffsList.get(idx),
+                                new Rect2d(x, y, width, height),
+                                image.size()
+                        );
+
+                        if (instanceMask != null) {
+                            // 提取并绘制轮廓
+                            List<MatOfPoint> contours = new ArrayList<>();
+                            Mat hierarchy = new Mat();
+
+                            Imgproc.findContours(instanceMask, contours, hierarchy,
+                                    Imgproc.RETR_EXTERNAL,
+                                    Imgproc.CHAIN_APPROX_SIMPLE);
+
+                            if (!contours.isEmpty()) {
+                                // 绘制多边形轮廓
+                                Imgproc.drawContours(image, contours, -1, color, 2);
+
+                                // 绘制半透明填充mask
+                                Mat colorMask = new Mat(instanceMask.size(), CvType.CV_8UC3, color);
+                                Core.bitwise_and(colorMask, colorMask, colorMask, instanceMask);
+                                Core.add(maskOverlay, colorMask, maskOverlay);
+
+                                colorMask.release();
+                            }
+
+                            hierarchy.release();
+                            instanceMask.release();
+                        }
+                    } catch (Exception e) {
+                        log.warn("生成mask失败: {}", e.getMessage());
+                    }
+                }
+
+                // 绘制标签
+                String label = classes.get(clsId) + ": " + String.format("%.2f", conf);
+
+                int[] baseline = new int[1];
+                Size labelSize = Imgproc.getTextSize(label, Imgproc.FONT_HERSHEY_SIMPLEX,
+                        0.5, 2, baseline);
+
+                // 标签背景
+                Imgproc.rectangle(image,
+                        new Point(x, y - labelSize.height - 10),
+                        new Point(x + labelSize.width, y),
+                        color, -1);
+
+                // 标签文字
+                Imgproc.putText(image, label, new Point(x, y - 5),
+                        Imgproc.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(255, 255, 255), 2);
+
+                colorIdx++;
+            }
+
+            // 叠加半透明mask
+            if (Core.countNonZero(maskOverlay.reshape(1, maskOverlay.rows() * maskOverlay.cols())) > 0) {
+                Core.addWeighted(image, 0.6, maskOverlay, 0.4, 0, image);
+            }
+            maskOverlay.release();
+
+            // 9. 保存结果
+            String savepath = uploadpath + File.separator + "temp" + File.separator;
+            if (saveName != null && !saveName.isEmpty()) {
+                savepath += saveName + ".jpg";
+            } else {
+                saveName = System.currentTimeMillis() + "";
+                savepath += saveName + ".jpg";
+            }
+            Imgcodecs.imwrite(savepath, image);
+
+            long endTime = System.currentTimeMillis();
+            log.info("总耗时: {}ms", (endTime - startTime));
+            return saveName + ".jpg";
+        }
+    }
+
+    /**
+     * 从ONNX输出生成实例分割mask
+     */
+    private static Mat generateInstanceMaskOnnx(float[][][][] protoOutput,
+                                                float[] maskCoeffs,
+                                                Rect2d bbox,
+                                                Size imageSize) {
+        try {
+            // protoOutput: [1, 32, 160, 160]
+            int numMasks = protoOutput[0].length;      // 32
+            int maskH = protoOutput[0][0].length;      // 160
+            int maskW = protoOutput[0][0][0].length;   // 160
+
+            // 矩阵乘法: protos[160*160, 32] × coeffs[32, 1] = mask[160*160, 1]
+            float[][] mask160 = new float[maskH][maskW];
+
+            for (int h = 0; h < maskH; h++) {
+                for (int w = 0; w < maskW; w++) {
+                    float sum = 0;
+                    for (int c = 0; c < numMasks; c++) {
+                        sum += protoOutput[0][c][h][w] * maskCoeffs[c];
+                    }
+                    // Sigmoid激活
+                    mask160[h][w] = (float) (1.0 / (1.0 + Math.exp(-sum)));
+                }
+            }
+
+            // 转换为Mat
+            Mat mask160Mat = new Mat(maskH, maskW, CvType.CV_32F);
+            for (int h = 0; h < maskH; h++) {
+                mask160Mat.put(h, 0, mask160[h]);
+            }
+
+            // 调整到原图尺寸
+            Mat maskResized = new Mat();
+            Imgproc.resize(mask160Mat, maskResized, imageSize, 0, 0, Imgproc.INTER_LINEAR);
+
+            // 二值化
+            Mat maskBinary = new Mat();
+            Imgproc.threshold(maskResized, maskBinary, 0.5, 255, Imgproc.THRESH_BINARY);
+            maskBinary.convertTo(maskBinary, CvType.CV_8UC1);
+
+            // 裁剪到bbox区域
+            int x = Math.max(0, (int) bbox.x);
+            int y = Math.max(0, (int) bbox.y);
+            int w = Math.min((int) bbox.width, (int) imageSize.width - x);
+            int h = Math.min((int) bbox.height, (int) imageSize.height - y);
+
+            if (w <= 0 || h <= 0) {
+                return null;
+            }
+
+            Rect bboxRect = new Rect(x, y, w, h);
+            Mat finalMask = Mat.zeros(imageSize, CvType.CV_8UC1);
+            Mat roiMask = maskBinary.submat(bboxRect);
+            Mat roiFinal = finalMask.submat(bboxRect);
+            roiMask.copyTo(roiFinal);
+
+            // 释放资源
+            mask160Mat.release();
+            maskResized.release();
+            maskBinary.release();
+
+            return finalMask;
+
+        } catch (Exception e) {
+            log.error("ONNX Mask生成错误: {}", e.getMessage(), e);
+            return null;
+        }
+    }
     public static String SendPicOnnxYoloV11(TabAiModel tabAiModel,String picUrl,
                                             String saveName, String uploadpath, boolean useGpu) throws Exception {
 
@@ -2546,7 +2897,386 @@ public class AIModelYolo3 {
             return retureBoxInfo;
         }
     }
+    public static String SendPicYoloV11Seg(TabAiModel tabAiModel, String picUrl, String saveName, String uploadpath, boolean gpuFlag) throws Exception {
+        log.info(uploadpath);
+        Long a = System.currentTimeMillis();
+        String weight = tabAiModel.getAiWeights();
+        String names = tabAiModel.getAiNameName();
 
+        float confThreshold = tabAiModel.getThreshold() == null ? 0.3f : tabAiModel.getThreshold().floatValue();
+        float nmsThreshold = tabAiModel.getNmsThreshold() == null ? 0.2f : tabAiModel.getNmsThreshold().floatValue();
+
+        // 加载类别名称
+        List<String> classes = Files.readAllLines(Paths.get(uploadpath + File.separator + names));
+        int expectedClassCount = classes.size();
+
+        log.info("weight地址{}", uploadpath + File.separator + weight);
+        Net net = Dnn.readNetFromONNX(uploadpath + File.separator + weight);
+
+        if (gpuFlag) {
+            net.setPreferableBackend(Dnn.DNN_BACKEND_CUDA);
+            net.setPreferableTarget(Dnn.DNN_TARGET_CUDA);
+            log.info("[DNN推理规则：GPU]");
+        } else {
+            net.setPreferableBackend(Dnn.DNN_BACKEND_OPENCV);
+            net.setPreferableTarget(Dnn.DNN_TARGET_CPU);
+            log.info("[DNN推理规则：CPU]");
+        }
+
+        log.info("图片地址{}", uploadpath + File.separator + picUrl);
+        Mat image = Imgcodecs.imread(uploadpath + File.separator + picUrl);
+        log.info("原始图片尺寸: {}x{}", image.cols(), image.rows());
+
+        Mat processedImage = letterboxResize(image, 640, 640);
+        Mat blob = Dnn.blobFromImage(processedImage, 1.0 / 255.0, new Size(640, 640),
+                new Scalar(0, 0, 0), true, false, CvType.CV_32F);
+        net.setInput(blob);
+
+        List<Mat> result = new ArrayList<>();
+        List<String> outBlobNames = getOutputNames(net);
+        net.forward(result, outBlobNames);
+
+        if (result.isEmpty()) {
+            log.error("Failed to get output from the model.");
+            return "error";
+        }
+
+        // ========== YOLOv11实例分割模型输出解析 ==========
+        Mat detectOutput = null;  // 检测输出 [1, 51, 8400]
+        Mat protoOutput = null;   // 原型输出 [1, 32, 160, 160]
+
+        for (Mat output : result) {
+            int dims = output.dims();
+            log.info("========================================");
+
+            if (dims == 3) {
+                long dim0 = output.size(0);
+                long dim1 = output.size(1);
+                long dim2 = output.size(2);
+                log.info("3维输出: [{}, {}, {}]", dim0, dim1, dim2);
+
+                // YOLOv11实例分割检测头: [1, 4+classes+masks, anchors]
+                // 例如: [1, 51, 8400] = [1, 4+15+32, 8400]
+                if (dim1 < 200 && dim2 > 1000) {
+                    detectOutput = output;
+                    log.info("识别为检测输出 (包含bbox+类别+mask系数)");
+                }
+            } else if (dims == 4) {
+                long dim0 = output.size(0);
+                long dim1 = output.size(1);
+                long dim2 = output.size(2);
+                long dim3 = output.size(3);
+                log.info("4维输出: [{}, {}, {}, {}]", dim0, dim1, dim2, dim3);
+
+                // YOLOv11实例分割原型: [1, num_masks, H, W]
+                // 例如: [1, 32, 160, 160]
+                protoOutput = output;
+                log.info("识别为Mask原型输出");
+            }
+        }
+
+        if (detectOutput == null) {
+            log.error("未找到检测输出!");
+            return "error";
+        }
+
+        // ========== 解析检测输出 ==========
+        long dim0 = detectOutput.size(0);
+        long dim1 = detectOutput.size(1);  // 51 = 4 + 15 + 32
+        long dim2 = detectOutput.size(2);  // 8400
+
+        log.info("检测输出维度: [{}, {}, {}]", dim0, dim1, dim2);
+
+        // 计算实际结构
+        int numMasks = (protoOutput != null) ? (int)protoOutput.size(1) : 0;  // 32
+        int numClasses = (int)dim1 - 4 - numMasks;  // 51 - 4 - 32 = 15
+
+        log.info("类别数: {}, Mask系数数: {}, 期望类别数: {}", numClasses, numMasks, expectedClassCount);
+
+        if (numClasses != expectedClassCount) {
+            log.warn("警告: 计算的类别数({})与names文件({})不匹配!", numClasses, expectedClassCount);
+        }
+
+        // 转置为 [8400, 51]
+        Mat reshaped = detectOutput.reshape(1, (int) dim1);
+        Mat transposed = new Mat();
+        Core.transpose(reshaped, transposed);
+
+        int rows = (int) dim2;  // 8400
+        int cols = (int) dim1;  // 51
+
+        log.info("处理后矩阵: {} x {}", rows, cols);
+
+        List<Rect2d> boxes2d = new ArrayList<>();
+        List<Float> confidences = new ArrayList<>();
+        List<Integer> classIds = new ArrayList<>();
+        List<Mat> maskCoeffs = new ArrayList<>();  // 存储每个检测的mask系数
+
+        // ========== 遍历每个anchor point ==========
+        for (int i = 0; i < rows; i++) {
+            Mat detection = transposed.row(i);
+
+            // 提取bbox坐标 [0:4]
+            float centerX = (float) detection.get(0, 0)[0];
+            float centerY = (float) detection.get(0, 1)[0];
+            float width = (float) detection.get(0, 2)[0];
+            float height = (float) detection.get(0, 3)[0];
+
+            // 提取类别分数 [4:4+numClasses]
+            Mat classScores = detection.colRange(4, 4 + numClasses);
+            Core.MinMaxLocResult minMaxResult = Core.minMaxLoc(classScores);
+            float maxClassScore = (float) minMaxResult.maxVal;
+            int classId = (int) minMaxResult.maxLoc.x;
+
+            // YOLOv11实例分割没有objectness，置信度就是类别分数
+            float confidence = maxClassScore;
+
+            if (confidence > confThreshold && classId < numClasses) {
+                float left = centerX - width / 2;
+                float top = centerY - height / 2;
+
+                classIds.add(classId);
+                confidences.add(confidence);
+                boxes2d.add(new Rect2d(left, top, width, height));
+
+                // 提取mask系数 [4+numClasses : 4+numClasses+numMasks]
+                if (protoOutput != null && numMasks > 0) {
+                    Mat maskCoeff = detection.colRange(4 + numClasses, cols).clone();
+                    maskCoeffs.add(maskCoeff);
+                }
+            }
+        }
+
+        log.info("NMS前检测框数量: {}", boxes2d.size());
+
+        // ========== NMS ==========
+        MatOfRect2d boxes_mat = new MatOfRect2d();
+        boxes_mat.fromList(boxes2d);
+
+        MatOfFloat confidences_mat = new MatOfFloat(Converters.vector_float_to_Mat(confidences));
+        MatOfInt indices = new MatOfInt();
+
+        if (!boxes_mat.empty() && !confidences_mat.empty()) {
+            Dnn.NMSBoxes(boxes_mat, confidences_mat, confThreshold, nmsThreshold, indices);
+        }
+
+        int[] indices_arr = indices.toArray();
+        log.info("NMS后检测框数量: {}", indices_arr.length);
+
+        // 计算letterbox的缩放参数
+        double scale = Math.min(640.0 / image.cols(), 640.0 / image.rows());
+        double dx = (640 - image.cols() * scale) / 2;
+        double dy = (640 - image.rows() * scale) / 2;
+
+        // ========== 生成并绘制分割mask ==========
+        // ========== 生成并绘制分割mask ==========
+        Mat maskOverlay = Mat.zeros(image.size(), CvType.CV_8UC3);
+
+        int c = 0;
+        for (int idx : indices_arr) {
+            Rect2d box = boxes2d.get(idx);
+            int classId = classIds.get(idx);
+            float conf = confidences.get(idx);
+
+            if (classId >= classes.size()) {
+                log.warn("跳过无效类别ID: {}", classId);
+                continue;
+            }
+
+            // 还原到原图坐标
+            double x = (box.x - dx) / scale;
+            double y = (box.y - dy) / scale;
+            double width = box.width / scale;
+            double height = box.height / scale;
+
+            x = Math.max(0, Math.min(x, image.cols() - 1));
+            y = Math.max(0, Math.min(y, image.rows() - 1));
+            width = Math.min(width, image.cols() - x);
+            height = Math.min(height, image.rows() - y);
+
+            log.info("检测: {} { } [{ },{ },{ },{ }]",
+                    classes.get(classId), conf, x, y, width, height);
+
+            Scalar color = CommonColors(c);
+
+            // ========== 生成实例mask并绘制轮廓 ==========
+            if (protoOutput != null && idx < maskCoeffs.size()) {
+                try {
+                    Mat instanceMask = generateInstanceMask(
+                            protoOutput,
+                            maskCoeffs.get(idx),
+                            new Rect2d(x, y, width, height),
+                            image.size(),
+                            scale, dx, dy
+                    );
+
+                    if (instanceMask != null) {
+                        // ========== 提取并绘制多边形轮廓 ==========
+                        List<MatOfPoint> contours = new ArrayList<>();
+                        Mat hierarchy = new Mat();
+
+                        // 查找轮廓
+                        Imgproc.findContours(instanceMask, contours, hierarchy,
+                                Imgproc.RETR_EXTERNAL,
+                                Imgproc.CHAIN_APPROX_SIMPLE);
+
+                        if (!contours.isEmpty()) {
+                            // 绘制所有轮廓（多边形）
+                            Imgproc.drawContours(image, contours, -1, color, 2);
+
+                            // 可选：绘制填充的半透明mask
+                            Mat colorMask = new Mat(instanceMask.size(), CvType.CV_8UC3, color);
+                            Core.bitwise_and(colorMask, colorMask, colorMask, instanceMask);
+                            Core.add(maskOverlay, colorMask, maskOverlay);
+
+                            colorMask.release();
+                        }
+
+                        hierarchy.release();
+                        instanceMask.release();
+                    }
+                } catch (Exception e) {
+                    log.warn("生成mask失败: {}", e.getMessage());
+                }
+            } else {
+                // 如果没有mask，退回到绘制矩形框
+                Imgproc.rectangle(image,
+                        new Point(x, y),
+                        new Point(x + width, y + height),
+                        color, 2);
+            }
+
+            // 绘制标签
+            String label = classes.get(classId) + ": " + String.format("%.2f", conf);
+
+            // 添加文字背景（可选，让文字更清晰）
+            int[] baseline = new int[1];
+            Size labelSize = Imgproc.getTextSize(label, Imgproc.FONT_HERSHEY_SIMPLEX,
+                    0.5, 2, baseline);
+
+            // 绘制标签背景
+            Imgproc.rectangle(image,
+                    new Point(x, y - labelSize.height - 10),
+                    new Point(x + labelSize.width, y),
+                    color, -1);  // 填充矩形
+
+            // 绘制标签文字（白色）
+            Imgproc.putText(image, label, new Point(x, y - 5),
+                    Imgproc.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(255, 255, 255), 2);
+
+            c++;
+        }
+
+// 叠加半透明mask
+        if (Core.countNonZero(maskOverlay.reshape(1, maskOverlay.rows() * maskOverlay.cols())) > 0) {
+            Core.addWeighted(image, 0.6, maskOverlay, 0.4, 0, image);
+        }
+
+        maskOverlay.release();
+
+        String savepath = uploadpath + File.separator + "temp" + File.separator;
+
+        if (StringUtils.isNotBlank(saveName)) {
+            savepath += saveName + ".jpg";
+        } else {
+            saveName = System.currentTimeMillis() + "";
+            savepath += saveName + ".jpg";
+        }
+
+        log.info("保存路径: {}", savepath);
+        Imgcodecs.imwrite(savepath, image);
+
+        Long b = System.currentTimeMillis();
+        log.info("总耗时: {}ms", (b - a));
+
+        return saveName + ".jpg";
+    }
+
+    // ========== 辅助方法：生成实例分割mask ==========
+    // ========== 辅助方法：生成实例分割mask ==========
+    private static Mat generateInstanceMask(Mat protoOutput, Mat maskCoeffs,
+                                            Rect2d bbox, Size imageSize,
+                                            double scale, double dx, double dy) {
+        try {
+            // protoOutput: [1, 32, 160, 160]
+            // maskCoeffs: [1, 32]
+
+            int numMasks = (int) protoOutput.size(1);  // 32
+            int maskH = (int) protoOutput.size(2);     // 160
+            int maskW = (int) protoOutput.size(3);     // 160
+
+            // 提取原型矩阵 [32, 160*160]
+            Mat protos = protoOutput.reshape(1, numMasks);  // [32, 25600]
+
+            // maskCoeffs reshape 为 [32, 1]
+            Mat coeffs = maskCoeffs.reshape(1, numMasks);  // [32, 1]
+
+            // 矩阵乘法: [160*160, 32] × [32, 1] = [160*160, 1]
+            Mat protosT = new Mat();
+            Core.transpose(protos, protosT);  // [25600, 32]
+
+            Mat maskVec = new Mat();
+            Core.gemm(protosT, coeffs, 1, new Mat(), 0, maskVec);  // [25600, 1]
+
+            // Reshape回 [160, 160]
+            Mat mask160 = maskVec.reshape(1, maskH);
+
+            // ========== 修正：Sigmoid激活 ==========
+            // 方法1: 分步计算
+            Mat negMask = new Mat();
+            Core.multiply(mask160, Scalar.all(-1), negMask);  // -mask
+
+            Mat expMask = new Mat();
+            Core.exp(negMask, expMask);  // exp(-mask)
+
+            Mat onePlusExp = new Mat();
+            Core.add(expMask, Scalar.all(1), onePlusExp);  // 1 + exp(-mask)
+
+            Mat sigmoidMask = new Mat();
+            Core.divide(1, onePlusExp, sigmoidMask);  // 1 / (1 + exp(-mask))
+
+            // 调整到原图尺寸
+            Mat maskResized = new Mat();
+            Imgproc.resize(sigmoidMask, maskResized, imageSize, 0, 0, Imgproc.INTER_LINEAR);
+
+            // 二值化
+            Mat maskBinary = new Mat();
+            Imgproc.threshold(maskResized, maskBinary, 0.5, 255, Imgproc.THRESH_BINARY);
+            maskBinary.convertTo(maskBinary, CvType.CV_8UC1);
+
+            // 裁剪到bbox区域
+            int x = Math.max(0, (int)bbox.x);
+            int y = Math.max(0, (int)bbox.y);
+            int w = Math.min((int)bbox.width, (int)imageSize.width - x);
+            int h = Math.min((int)bbox.height, (int)imageSize.height - y);
+
+            if (w <= 0 || h <= 0) {
+                return null;
+            }
+
+            Rect bboxRect = new Rect(x, y, w, h);
+
+            // 创建只在bbox内的mask
+            Mat finalMask = Mat.zeros(imageSize, CvType.CV_8UC1);
+            Mat roiMask = maskBinary.submat(bboxRect);
+            Mat roiFinal = finalMask.submat(bboxRect);
+            roiMask.copyTo(roiFinal);
+
+            // 释放临时矩阵
+            negMask.release();
+            expMask.release();
+            onePlusExp.release();
+            sigmoidMask.release();
+            maskResized.release();
+            maskBinary.release();
+
+            return finalMask;
+
+        } catch (Exception e) {
+            log.error("Mask生成错误: {}", e.getMessage(), e);
+            return null;
+        }
+    }
     public static String SendPicYoloV11(TabAiModel tabAiModel, String picUrl, String saveName, String uploadpath,boolean gpuFlag) throws Exception {
         log.info(uploadpath);
         Long a = System.currentTimeMillis();
