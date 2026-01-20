@@ -532,6 +532,14 @@ public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, Tab
                         log.info("使用opencV推理-姿态识别！！！");
                         savePath=modelYolo3.SendPicYoloV11CVPose(tabAiModel1,tabAiModelBund.getSaveUrl(),null,path);
                     }
+                }else if((tabAiModel1.getModelDify()!=null&&tabAiModel1.getModelDify()==4)||(tabAiModel1.getModelDify()!=null&&tabAiModel1.getModelDify()==3)){
+                    if(tabAiModel1.getModelDifyType()!=null&&tabAiModel1.getModelDifyType()==20){
+                        log.info("使用ONNX推理-图像分割！！！");
+                        savePath=modelYolo3.SendPicOnnxYoloV11Seg(tabAiModel1,tabAiModelBund.getSaveUrl(),null,path,gpuFlag);
+                    }else{
+                        log.info("使用opencV推理-图像分割！！！");
+                        savePath=modelYolo3.SendPicYoloV11Seg(tabAiModel1,tabAiModelBund.getSaveUrl(),null,path,gpuFlag);
+                    }
                 }else{
                     if(tabAiModel1.getModelDifyType()!=null&&tabAiModel1.getModelDifyType()==20){
                         log.info("使用ONNX推理！！！");
