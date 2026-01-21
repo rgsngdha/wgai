@@ -100,12 +100,12 @@ public class VideoReadPicOnnxNew implements Runnable {
                 grabber = grabberFuture.get(60, TimeUnit.SECONDS); // 60秒超时
                 log.info("[✓ grabber创建成功] 流: {}", tabAiSubscriptionNew.getName());
             } catch (TimeoutException e) {
-                log.error("[❌ grabber创建超时] 流: {}, 超过60秒", tabAiSubscriptionNew.getName());
+                log .warn("[ grabber创建超时] 流: {}, 超过60秒", tabAiSubscriptionNew.getName());
                 grabberFuture.cancel(true);
                 grabberCreator.shutdownNow();
                 return;
             } catch (Exception e) {
-                log.error("[❌ grabber创建失败] 流: {}", tabAiSubscriptionNew.getName(), e);
+                log .warn("[ grabber创建失败] 流: {}", tabAiSubscriptionNew.getName(), e);
                 grabberCreator.shutdownNow();
                 return;
             } finally {
@@ -113,7 +113,7 @@ public class VideoReadPicOnnxNew implements Runnable {
             }
 
         } catch (Exception e) {
-            log.error("[流创建异常] 流: {}", tabAiSubscriptionNew.getName(), e);
+            log .warn("[流创建异常] 流: {}", tabAiSubscriptionNew.getName(), e);
             return;
         }
 
@@ -133,14 +133,15 @@ public class VideoReadPicOnnxNew implements Runnable {
 
                 // 时间段控制
                 if (tabAiSubscriptionNew.getDifyStartEnd() != null && tabAiSubscriptionNew.getDifyStartTime() != null) {
-                    int startHour = tabAiSubscriptionNew.getDifyStartTime();
-                    int endHour = tabAiSubscriptionNew.getDifyStartEnd();
+                    int startHour = tabAiSubscriptionNew.getDifyStartEnd();//推送开始时间
+                    int endHour= tabAiSubscriptionNew.getDifyStartTime();//推送结束时间
+
                     LocalTime now = LocalTime.now();
                     LocalTime start = LocalTime.of(startHour, 0);
                     LocalTime end = LocalTime.of(endHour, 0);
 
                     if (now.isBefore(start) || now.isAfter(end)) {
-                        log.debug("不在有效时段 ({}~{})", startHour, endHour);
+                        log.warn("不在有效时段 {} ({}~{}) ({}~{})",now,startHour,endHour, startHour, endHour);
                         Thread.sleep(5000);
                         continue;
                     }
@@ -169,7 +170,7 @@ public class VideoReadPicOnnxNew implements Runnable {
 
                 // 队列控制
                 if (pendingFrames.get() >= MAX_PENDING_FRAMES) {
-                    log.debug("[丢帧] 排队: {}", pendingFrames.get());
+                    log.warn("[丢帧] 排队: {}", pendingFrames.get());
                     frame.close();
                     droppedFrames.incrementAndGet();
                     continue;
@@ -180,7 +181,7 @@ public class VideoReadPicOnnxNew implements Runnable {
             }
 
         } catch (Exception exception) {
-            log.error("[处理异常]", exception);
+            log .warn("[处理异常]", exception);
         } finally {
             log.info("[开始清理资源] 流: {}", tabAiSubscriptionNew.getName());
             forceCleanup(grabber);
@@ -253,7 +254,7 @@ public class VideoReadPicOnnxNew implements Runnable {
                 }
 
             } catch (Exception e) {
-                log.error("[帧处理异常]", e);
+                log .warn("[帧处理异常]", e);
             } finally {
                 if (matInfo != null) returnMat(matInfo);
                 if (image != null) returnBufferedImage(image);
@@ -277,7 +278,7 @@ public class VideoReadPicOnnxNew implements Runnable {
             }
 
         } catch (Exception e) {
-            log.error("[处理NetPush异常]", e);
+            log .warn("[处理NetPush异常]", e);
         }
     }
 
@@ -304,7 +305,7 @@ public class VideoReadPicOnnxNew implements Runnable {
             }
 
         } catch (Exception e) {
-            log.error("[执行检测异常]", e);
+            log .warn("[执行检测异常]", e);
         }
     }
 
@@ -321,12 +322,12 @@ public class VideoReadPicOnnxNew implements Runnable {
             if (i == 0) {
                 validationPassed = validateFirstModel(mat, beforePush, identifyTypeAll);
                 if (validationPassed == null || !validationPassed.isFlag()) {
-                    log.debug("[第一个模型验证失败]");
+                    log.warn("[第一个模型验证失败]");
                     break;
                 }
             } else {
                 if (validationPassed == null || validationPassed.getInfoList().size() <= 0) {
-                    log.debug("[前置内容为空]");
+                    log.warn("[前置内容为空]");
                     break;
                 }
                 executeDetection(mat, beforePush, identifyTypeAll, validationPassed.getInfoList());
@@ -339,7 +340,7 @@ public class VideoReadPicOnnxNew implements Runnable {
             if (forceShutdown.get()) return null;
             return identifyTypeAll.detectObjectsV5Onnx(tabAiSubscriptionNew, mat, beforePush, redisTemplate);
         } catch (Exception e) {
-            log.error("[验证模型异常]", e);
+            log .warn("[验证模型异常]", e);
             return null;
         }
     }
@@ -361,7 +362,7 @@ public class VideoReadPicOnnxNew implements Runnable {
                 List<Runnable> pending = processingExecutor.shutdownNow();
                 log.warn("[强制终止线程池，剩余: {}]", pending.size());
                 if (!processingExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
-                    log.error("[线程池无法终止]");
+                    log .warn("[线程池无法终止]");
                 }
             }
         } catch (InterruptedException e) {
