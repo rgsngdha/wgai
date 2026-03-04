@@ -1035,6 +1035,15 @@ public class TabAiHistoryServiceImpl extends ServiceImpl<TabAiHistoryMapper, Tab
         return Result.error("识别失败未发现识别内容");
     }
 
+    @Override
+    public Result<?> startAiReturn(TabAiModelBund tabAiModelBund, String path) {
+        String modelId=tabAiModelBund.getModelId();
+        String name=tabAiModelBund.getModelName();
+        String pic=tabAiModelBund.getSendUrl(); //base64;
+
+
+        return null;
+    }
 
 
     @Override

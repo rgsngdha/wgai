@@ -118,6 +118,7 @@ public interface ITabAiHistoryService extends IService<TabAiHistory> {
     public int saveIdentifyLocalVideoThreadOnnx(TabAiModelBund tabAiModelBund,String path,String userId);
     Result<String> startAi(TabAiModelBund tabAiModelBund, String path, String userId);
 
+    Result<?> startAiReturn(TabAiModelBund tabAiModelBund, String path);
     /***
      * 多组推送内容识别内容
      *

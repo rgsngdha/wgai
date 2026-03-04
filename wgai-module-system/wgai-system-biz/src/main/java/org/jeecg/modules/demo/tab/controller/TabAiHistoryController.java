@@ -120,6 +120,17 @@ public class TabAiHistoryController extends JeecgController<TabAiHistory, ITabAi
 		 LoginUser sysUser = (LoginUser) SecurityUtils.getSubject().getPrincipal();
 		 return tabAiHistoryService.startAi(tabAiModelBund,uploadpath,sysUser.getId());
 	 }
+	 @AutoLog(value = "AI识别结果")
+	 @ApiOperation(value="AI识别结果", notes="AI识别结果历史-添加")
+	 //@RequiresPermissions("org.jeecg.modules.demo:tab_ai_history:add")
+	 @PostMapping(value = "/returnIdentify")
+	 public Result<?> returnIdentify(@RequestBody TabAiModelBund tabAiModelBund) {
+
+
+		 return tabAiHistoryService.startAiReturn(tabAiModelBund,uploadpath);
+	 }
+
+
 
 	 @Autowired
 	 private ITabAuditSettingService tabAuditSettingService;
