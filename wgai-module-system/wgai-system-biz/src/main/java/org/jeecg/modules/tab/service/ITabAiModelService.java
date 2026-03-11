@@ -30,4 +30,6 @@ public interface ITabAiModelService extends IService<TabAiModel> {
     Result<?> receiveModel(TabAiModel tabAiModel);
     public Result<?> receiveModelFile(TabAiModel tabAiModel, MultipartFile aiWeightsFile,
                                   MultipartFile aiConfigFile, MultipartFile aiNameNameFile);
+
+    public Result<?> returnPicPose( MultipartFile pic,String modelId);
 }

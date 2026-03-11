@@ -9,6 +9,7 @@ import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.util.RestUtil;
 import org.jeecg.modules.demo.tab.entity.TabNextUrl;
 import org.jeecg.modules.demo.tab.service.ITabNextUrlService;
+import org.jeecg.modules.tab.AIModel.AIModelYolo3;
 import org.jeecg.modules.tab.entity.TabAiModel;
 import org.jeecg.modules.tab.mapper.TabAiModelMapper;
 import org.jeecg.modules.tab.service.ITabAiModelService;
@@ -36,6 +37,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
+import static org.jeecg.modules.tab.AIModel.AIModelYolo3.base64Image;
+
 /**
  * @Description: AI模型
  * @Author: WGAI
@@ -48,6 +51,8 @@ public class TabAiModelServiceImpl extends ServiceImpl<TabAiModelMapper, TabAiMo
 
     @Autowired
     ITabNextUrlService iTabNextUrlService;
+
+
     @Autowired
     private RestTemplate restTemplate;
     @Value("${jeecg.path.upload}")
@@ -320,6 +325,44 @@ public class TabAiModelServiceImpl extends ServiceImpl<TabAiModelMapper, TabAiMo
             this.save(tabAiModel);
 
             return Result.OK("接收成功");
+
+        } catch (Exception ex) {
+            log.error("接收模型失败", ex);
+            return Result.error("接收失败: " + ex.getMessage());
+        }
+    }
+
+    @Override
+    public Result<?> returnPicPose(MultipartFile pic, String modelId) {
+        try {
+            JSONObject jsonObject=new JSONObject();
+            jsonObject.put("pic",null);
+            jsonObject.put("isFlag",false);
+            // 创建目标目录
+            File targetDir = new File(uplpadPath + File.separator + "next");
+            if (!targetDir.exists()) {
+                targetDir.mkdirs();
+            }
+            String fileName ="";
+            // 保存上传的文件
+            if (pic != null && !pic.isEmpty()) {
+                 fileName = saveUploadedFile(pic, "pic");
+
+            }
+
+            log.info("当前文件路径{}",fileName);
+
+            TabAiModel tabAiModel=this.getById(modelId);
+            AIModelYolo3 modelYolo3=new AIModelYolo3();
+            String savePath=modelYolo3.SendPicYoloV11ONNXPose(tabAiModel,fileName,null,uplpadPath,false);
+            log.info("savePath{}",savePath);
+            if(StringUtils.isNotEmpty(savePath)&&!savePath.equals("未检测到")){
+                String base64Img = base64Image(uplpadPath + File.separator +"temp"+ File.separator +savePath);
+                jsonObject.put("pic",base64Img);
+                jsonObject.put("isFlag",true);
+            }
+
+            return Result.OK(jsonObject);
 
         } catch (Exception ex) {
             log.error("接收模型失败", ex);

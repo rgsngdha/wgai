@@ -8,6 +8,7 @@ import javax.servlet.http.HttpServletResponse;
 import com.alibaba.fastjson.JSONObject;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.system.query.QueryGenerator;
+import org.jeecg.modules.demo.tab.entity.TabAiModelBund;
 import org.jeecg.modules.demo.video.entity.TabAiSubscriptionNew;
 import org.jeecg.modules.demo.video.service.impl.TabAiSubscriptionNewServiceImpl;
 import org.jeecg.modules.tab.entity.TabAiModel;
@@ -137,6 +138,16 @@ public class TabAiModelController extends JeecgController<TabAiModel, ITabAiMode
 			 log.error("解析模型数据失败", e);
 			 return Result.error("解析模型数据失败: " + e.getMessage());
 		 }
+	 }
+
+	 @AutoLog(value = "AI识别结果")
+	 @ApiOperation(value="AI识别结果", notes="AI识别结果返回")
+	 //@RequiresPermissions("org.jeecg.modules.demo:tab_ai_history:add")
+	 @PostMapping(value = "/returnPicPose")
+	 public Result<?> returnPicPose(@RequestParam(value = "pic", required = false) MultipartFile pic,@RequestParam("modelId") String modelId) {
+
+
+		 return tabAiModelService.returnPicPose(pic,modelId);
 	 }
 
 	 /**
