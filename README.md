@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/Chat-Discord-7289DA?logo=discord" alt="Discord">
   <img src="https://img.shields.io/badge/Reddit-Community-7289DA?logo=reddit" alt="Reddit">
   <img src="https://img.shields.io/docker/pulls/apache/hertzbeat?logo=docker" alt="Docker Pulls">
-  <img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="License">
+
 </p>
 
 ---
